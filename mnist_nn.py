@@ -55,7 +55,15 @@ def main(_):
   y = tf.sigmoid(z_o)
 
 
-  loss = 0.5 * tf.reduce_mean(tf.reduce_sum(tf.squared_difference(y, y_), 1))
+  if FLAGS.loss == 'cross-entropy':
+    # loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(z_o, y_))
+    loss = tf.reduce_mean(
+      -tf.reduce_sum(y_ * tf.log(y) + (1-y_) * tf.log(1-y), 1))
+  elif FLAGS.loss == 'quadratic':
+    loss = 0.5 * tf.reduce_mean(tf.reduce_sum(tf.squared_difference(y, y_), 1))
+  else:
+    raise("bad loss function")
+
   train_step = tf.train.GradientDescentOptimizer(FLAGS.eta).minimize(loss)
 
   sess = tf.InteractiveSession()
@@ -90,5 +98,6 @@ if __name__ == '__main__':
                       help='batch size')
   parser.add_argument('--epochs', type=int, default=30,
                       help='epochs')
+  parser.add_argument('--loss', type=str, default='cross-entropy')
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
