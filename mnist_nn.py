@@ -24,6 +24,7 @@ from __future__ import print_function
 
 import argparse
 import sys
+import os
 
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -63,20 +64,26 @@ def main(_):
   else:
     raise ArgumentError("bad loss function")
 
+  tf.summary.scalar('loss', loss)
   if FLAGS.regularize > 0:
-    loss = loss + FLAGS.regularize * (tf.nn.l2_loss(W_h) + tf.nn.l2_loss(W_o))
+    regularization = FLAGS.regularize * (tf.nn.l2_loss(W_h) + tf.nn.l2_loss(W_o))
+    tf.summary.scalar('regularize_loss', regularization)
+    loss = loss + regularization
 
   train_step = tf.train.GradientDescentOptimizer(FLAGS.eta).minimize(loss)
-  tf.summary.scalar('x-entropy loss', loss)
+
+  correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
+  accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+  tf.summary.scalar('accuracy', accuracy)
 
   sess = tf.InteractiveSession()
   merged = tf.summary.merge_all()
-  train_writer = tf.summary.FileWriter(FLAGS.log_dir, sess.graph)
+  train_writer = tf.summary.FileWriter(os.path.join(FLAGS.log_dir, 'train'), sess.graph)
+  validate_writer = tf.summary.FileWriter(os.path.join(FLAGS.log_dir, 'validation'), sess.graph)
   tf.global_variables_initializer().run()
 
   # Train
-  correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
-  accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
   for i in range(FLAGS.epochs * int(mnist.train.num_examples/FLAGS.batch)):
     batch_xs, batch_ys = mnist.train.next_batch(FLAGS.batch)
     sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
@@ -85,6 +92,7 @@ def main(_):
                                       feed_dict={x: mnist.train.images,
                                                  y_: mnist.train.labels})
       train_writer.add_summary(summary, i)
+      train_writer.flush()
       print("i={epoch}:{off} cost={cost:0.4f} acc={acc:0.4f}".format(
         i     = i,
         epoch = int((i*FLAGS.batch)/mnist.train.num_examples),
@@ -92,6 +100,11 @@ def main(_):
         cost  = cost_,
         acc   = acc_,
       ))
+      summary, cost_, acc_ = sess.run([merged, loss, accuracy],
+                                      feed_dict={x: mnist.validation.images,
+                                                 y_: mnist.validation.labels})
+      validate_writer.add_summary(summary, i)
+      validate_writer.flush()
 
   # Test trained model
   print("test accuracy: {0:0.2f}".format(
