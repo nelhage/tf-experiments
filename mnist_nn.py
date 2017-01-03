@@ -29,8 +29,9 @@ from tensorflow.examples.tutorials.mnist import input_data
 
 import tensorflow as tf
 
-FLAGS = None
+import math
 
+FLAGS = None
 
 def main(_):
   # Import data
@@ -40,54 +41,62 @@ def main(_):
   x = tf.placeholder(tf.float32, [None, 784])
   y_ = tf.placeholder(tf.float32, [None, 10])
 
-  W_h = tf.Variable(tf.random_normal([784, FLAGS.n], mean=1.0/784))
+  W_h = tf.Variable(tf.random_normal([784, FLAGS.n], mean=1/math.sqrt(float(784))))
   b_h = tf.Variable(tf.random_normal([FLAGS.n]))
   z_h = tf.matmul(x, W_h) + b_h
   a_h = tf.sigmoid(z_h)
 
-  W_o = tf.Variable(tf.random_normal([FLAGS.n, 10], mean=1.0/FLAGS.n))
+  W_o = tf.Variable(tf.random_normal([FLAGS.n, 10], mean=1.0/math.sqrt(float(FLAGS.n))))
   b_o = tf.Variable(tf.random_normal([10]))
   z_o = tf.matmul(a_h, W_o) + b_o
-  y = tf.sigmoid(z_o)
 
+  y = tf.sigmoid(z_o)
 
   if FLAGS.loss == 'softmax':
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(z_o, y_))
   elif FLAGS.loss == 'cross-entropy':
-    loss = tf.reduce_mean(
-      -tf.reduce_sum(y_ * tf.log(y) + (1-y_) * tf.log(1-y), 1))
+    cross_entropy = -tf.reduce_sum(y_ * tf.log(y) + (1-y_) * tf.log(1-y), 1)
+    cross_entropy = tf.select(tf.is_nan(cross_entropy), tf.ones_like(cross_entropy) * 0, cross_entropy)
+    loss = tf.reduce_mean(cross_entropy)
   elif FLAGS.loss == 'quadratic':
-    loss = 0.5 * tf.reduce_mean(tf.reduce_sum(tf.squared_difference(y, y_), 1))
+    loss = tf.reduce_mean(tf.reduce_sum(tf.squared_difference(y, y_), 1))/2.0
   else:
     raise ArgumentError("bad loss function")
 
   if FLAGS.regularize > 0:
-    weights = tf.concat(0, [tf.reshape(W_h, [-1]), tf.reshape(W_o, [-1])])
-    loss = loss + FLAGS.regularize * tf.reduce_mean(weights*weights)
+    loss = loss + FLAGS.regularize * (tf.nn.l2_loss(W_h) + tf.nn.l2_loss(W_o))
 
   train_step = tf.train.GradientDescentOptimizer(FLAGS.eta).minimize(loss)
+  tf.summary.scalar('x-entropy loss', loss)
 
   sess = tf.InteractiveSession()
+  merged = tf.summary.merge_all()
+  train_writer = tf.summary.FileWriter(FLAGS.log_dir, sess.graph)
   tf.global_variables_initializer().run()
+
   # Train
+  correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
+  accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
   for i in range(FLAGS.epochs * int(mnist.train.num_examples/FLAGS.batch)):
     batch_xs, batch_ys = mnist.train.next_batch(FLAGS.batch)
     sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
-    if i % 100 == 0:
-      correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
-      accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-      print("i={0} cost={1:0.4f} acc={2:0.4f}".format(
-        i,
-        sess.run(loss, feed_dict={x: mnist.test.images,
-                                      y_: mnist.test.labels}),
-        sess.run(accuracy, feed_dict={x: mnist.test.images,
-                                      y_: mnist.test.labels})))
+    if (i * FLAGS.batch) % 10000 == 0:
+      summary, cost_, acc_ = sess.run([merged, loss, accuracy],
+                                      feed_dict={x: mnist.train.images,
+                                                 y_: mnist.train.labels})
+      train_writer.add_summary(summary, i)
+      print("i={epoch}:{off} cost={cost:0.4f} acc={acc:0.4f}".format(
+        i     = i,
+        epoch = int((i*FLAGS.batch)/mnist.train.num_examples),
+        off   = int((i*FLAGS.batch)%mnist.train.num_examples),
+        cost  = cost_,
+        acc   = acc_,
+      ))
 
   # Test trained model
-  correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
-  accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-  print(sess.run(accuracy, feed_dict={x: mnist.test.images,
-                                      y_: mnist.test.labels}))
+  print("test accuracy: {0:0.2f}".format(
+    100*sess.run(accuracy, feed_dict={x: mnist.test.images,
+                                  y_: mnist.test.labels})))
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
@@ -103,5 +112,11 @@ if __name__ == '__main__':
                       help='epochs')
   parser.add_argument('--loss', type=str, default='cross-entropy')
   parser.add_argument('--regularize', type=float, default=0.0)
+  parser.add_argument(
+      '--log_dir',
+      type=str,
+      default='log',
+      help='Directory to put the log data.'
+  )
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
