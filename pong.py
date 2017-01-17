@@ -92,9 +92,6 @@ def main(_):
   env = gym.make('Pong-v0')
   model = PingPongModel()
 
-  session = tf.InteractiveSession()
-  tf.global_variables_initializer().run()
-
   this_frame = process_frame(env.reset())
   prev_frame = np.zeros_like(this_frame)
 
@@ -103,6 +100,12 @@ def main(_):
   saver = tf.train.Saver(
     model.save_variables(),
     max_to_keep=5, keep_checkpoint_every_n_hours=1)
+
+  session = tf.InteractiveSession()
+  if FLAGS.load_model:
+    saver.restore(session, FLAGS.load_model)
+  else:
+    tf.global_variables_initializer().run()
 
   rounds = 0
 
@@ -182,5 +185,7 @@ if __name__ == '__main__':
                       help='checkpoint every N rounds')
   parser.add_argument('--checkpoint_path', type=str, default='models/pong',
                       help='checkpoint path')
+  parser.add_argument('--load_model', type=str, default=None,
+                      help='restore model')
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
