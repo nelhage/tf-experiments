@@ -42,12 +42,12 @@ def main(_):
   x = tf.placeholder(tf.float32, [None, 784])
   y_ = tf.placeholder(tf.float32, [None, 10])
 
-  W_h = tf.Variable(tf.random_normal([784, FLAGS.n], mean=1/math.sqrt(float(784))))
+  W_h = tf.Variable(tf.random_normal([784, FLAGS.n], stddev=1/math.sqrt(float(784))))
   b_h = tf.Variable(tf.random_normal([FLAGS.n]))
   z_h = tf.matmul(x, W_h) + b_h
   a_h = tf.sigmoid(z_h)
 
-  W_o = tf.Variable(tf.random_normal([FLAGS.n, 10], mean=1.0/math.sqrt(float(FLAGS.n))))
+  W_o = tf.Variable(tf.random_normal([FLAGS.n, 10], stddev=1.0/math.sqrt(float(FLAGS.n))))
   b_o = tf.Variable(tf.random_normal([10]))
   z_o = tf.matmul(a_h, W_o) + b_o
 

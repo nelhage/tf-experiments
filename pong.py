@@ -33,9 +33,9 @@ class PingPongModel(object):
 
     with tf.name_scope('Hidden'):
       self.w_h = tf.Variable(tf.random_normal([WIDTH * HEIGHT * PLANES, FLAGS.hidden],
-                                              mean=1/math.sqrt(WIDTH * HEIGHT * PLANES)),
+                                              stddev=1/math.sqrt(WIDTH * HEIGHT * PLANES)),
                              name='Weights')
-      self.b_h = tf.Variable(tf.random_normal([FLAGS.hidden]),
+      self.b_h = tf.Variable(tf.zeros([FLAGS.hidden]),
                              name='Biases')
 
       z_h = tf.matmul(deltas, self.w_h) + self.b_h
