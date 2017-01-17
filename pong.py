@@ -94,6 +94,11 @@ def main(_):
 
   steps = []
   reset_time = time.time()
+  saver = tf.train.Saver(
+    model.save_variables(),
+    max_to_keep=5, keep_checkpoint_every_n_hours=1)
+
+  rounds = 0
 
   while True:
     if FLAGS.render:
@@ -150,8 +155,13 @@ def main(_):
       del steps[:]
       prev_frame = np.zeros_like(this_frame)
 
+      rounds += 1
+      if FLAGS.checkpoint > 0 and rounds % FLAGS.checkpoint == 0:
+        saver.save(session, "pong", global_step=rounds)
+
       env.reset()
       reset_time = time.time()
+
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
@@ -161,5 +171,7 @@ if __name__ == '__main__':
                       help='hidden neurons')
   parser.add_argument('--eta', type=float, default=0.5,
                       help='learning rate')
+  parser.add_argument('--checkpoint', type=int, default=0,
+                      help='checkpoint every N rounds')
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
