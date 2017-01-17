@@ -16,7 +16,7 @@ import numpy as np
 WIDTH  = 210
 HEIGHT = 160
 PLANES = 3
-ACTIONS = 6
+ACTIONS = 2
 
 FLAGS = None
 
@@ -82,7 +82,7 @@ def main(_):
     actions.append(action)
 
     prev_frame = this_frame
-    this_frame, reward, done, info = env.step(action)
+    this_frame, reward, done, info = env.step(2 + action)
     this_frame = this_frame.reshape(-1)
 
     if reward != 0:
@@ -97,10 +97,11 @@ def main(_):
       for i in reversed(range(len(rewards))):
         if rewards[i] != 0:
           r = rewards[i]
-        rewards[i] = r
+        else:
+          rewards[i] = r
 
       actions = actions[1:]
-      actionv = np.zeros((len(actions), 6))
+      actionv = np.zeros((len(actions), ACTIONS))
       actionv[np.arange(len(actions)), actions] = 1
 
       loss, _ = session.run(
