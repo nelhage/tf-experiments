@@ -39,18 +39,21 @@ class PingPongModel(object):
                              name='Biases')
 
       z_h = tf.matmul(deltas, self.w_h) + self.b_h
-      a_h = tf.sigmoid(z_h)
+      a_h = tf.nn.relu(z_h)
+
+      tf.summary.histogram('z_h', z_h)
+      tf.summary.histogram('a_h', a_h)
 
     with tf.name_scope('Output'):
       self.w_o = tf.Variable(tf.random_normal([FLAGS.hidden, ACTIONS],
-                                              mean=1.0/math.sqrt(float(FLAGS.hidden))),
+                                              stddev=1.0/math.sqrt(float(FLAGS.hidden))),
                              name='Weights')
-      self.b_o = tf.Variable(tf.random_normal([ACTIONS]),
+      self.b_o = tf.Variable(tf.zeros([ACTIONS]),
                              name='Biases')
 
-      z_o = tf.matmul(a_h, self.w_o) + self.b_o
+      self.z_o = tf.matmul(a_h, self.w_o) + self.b_o
 
-    self.act_probs = tf.nn.softmax(z_o)
+    self.act_probs = tf.nn.softmax(self.z_o)
 
     with tf.name_scope('Train'):
       self.reward  = tf.placeholder(tf.float32, [None], name="Reward")
@@ -58,7 +61,7 @@ class PingPongModel(object):
 
       self.loss = tf.reduce_mean(
         -self.reward *
-        tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=z_o))
+        tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o))
       self.train_step = tf.train.GradientDescentOptimizer(FLAGS.eta).minimize(self.loss)
 
   def save_variables(self):
@@ -107,21 +110,28 @@ def main(_):
   else:
     tf.global_variables_initializer().run()
 
+  summary_op = tf.summary.merge_all()
+  summary_writer = tf.summary.FileWriter('summary', session.graph)
+
   rounds = 0
 
   while True:
     if FLAGS.render:
       env.render()
 
-    act_probs = session.run(model.act_probs, feed_dict={
+    z, act_probs = session.run([model.z_o, model.act_probs], feed_dict={
       model.this_frame: np.expand_dims(this_frame, 0),
       model.prev_frame: np.expand_dims(prev_frame, 0)})
+    if FLAGS.debug:
+      print("up={0:.3f} down={1:.3f} z={2}".
+            format(act_probs[0][0], act_probs[0][1], z[0]))
     r = np.random.uniform()
     for i, a in enumerate(act_probs[0]):
       if r <= a:
         action = i
         break
       r -= a
+    # action = 2 if np.random.uniform() < 0.5 else 3
 
     next_frame, reward, done, info = env.step(2 + action)
 
@@ -143,8 +153,8 @@ def main(_):
         rewards = build_rewards(steps)
         actions = build_actions(steps)
 
-        loss, _ = session.run(
-          [model.loss, model.train_step],
+        loss, summary, _ = session.run(
+          [model.loss, summary_op, model.train_step],
           feed_dict = {
             model.this_frame: [s.this_frame for s in steps],
             model.prev_frame: [s.prev_frame for s in steps],
@@ -169,6 +179,7 @@ def main(_):
       rounds += 1
       if FLAGS.checkpoint > 0 and rounds % FLAGS.checkpoint == 0:
         saver.save(session, FLAGS.checkpoint_path, global_step=rounds)
+        summary_writer.add_summary(summary, rounds)
 
       env.reset()
       reset_time = time.time()
@@ -190,5 +201,8 @@ if __name__ == '__main__':
                       help='checkpoint path')
   parser.add_argument('--load_model', type=str, default=None,
                       help='restore model')
+
+  parser.add_argument('--debug', action='store_true',
+                      help='debug spew')
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
