@@ -164,7 +164,7 @@ def main(_):
 
       rounds += 1
       if FLAGS.checkpoint > 0 and rounds % FLAGS.checkpoint == 0:
-        saver.save(session, "pong", global_step=rounds)
+        saver.save(session, FLAGS.checkpoint_path, global_step=rounds)
 
       env.reset()
       reset_time = time.time()
@@ -180,5 +180,7 @@ if __name__ == '__main__':
                       help='learning rate')
   parser.add_argument('--checkpoint', type=int, default=0,
                       help='checkpoint every N rounds')
+  parser.add_argument('--checkpoint_path', type=str, default='models/pong',
+                      help='checkpoint path')
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
