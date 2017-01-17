@@ -149,11 +149,12 @@ def main(_):
         })
       train_end = time.time()
 
-      print("done frames={0} reward={1} loss={3} actions={2}".format(
-        len(steps),
-        sum([s.reward for s in steps]),
-        collections.Counter([s.action for s in steps]),
-        loss,
+      print("done round={round} frames={frames} reward={reward} loss={loss} actions={actions}".format(
+        frames = len(steps),
+        reward = sum([s.reward for s in steps]),
+        actions = collections.Counter([s.action for s in steps]),
+        loss = loss,
+        round = rounds,
       ))
       print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
         train_start-reset_time, train_end-train_start, len(steps)/(train_start-reset_time)))
