@@ -30,28 +30,35 @@ class PingPongModel(object):
 
     deltas = self.this_frame - self.prev_frame
 
-    self.w_h = tf.Variable(tf.random_normal([WIDTH * HEIGHT * PLANES, FLAGS.hidden],
-                                           mean=1/math.sqrt(WIDTH * HEIGHT * PLANES)))
-    self.b_h = tf.Variable(tf.random_normal([FLAGS.hidden]))
+    with tf.name_scope('Hidden'):
+      self.w_h = tf.Variable(tf.random_normal([WIDTH * HEIGHT * PLANES, FLAGS.hidden],
+                                              mean=1/math.sqrt(WIDTH * HEIGHT * PLANES)),
+                             name='Weights')
+      self.b_h = tf.Variable(tf.random_normal([FLAGS.hidden]),
+                             name='Biases')
 
-    z_h = tf.matmul(deltas, self.w_h) + self.b_h
-    a_h = tf.sigmoid(z_h)
+      z_h = tf.matmul(deltas, self.w_h) + self.b_h
+      a_h = tf.sigmoid(z_h)
 
-    self.w_o = tf.Variable(tf.random_normal([FLAGS.hidden, ACTIONS],
-                                            mean=1.0/math.sqrt(float(FLAGS.hidden))))
-    self.b_o = tf.Variable(tf.random_normal([ACTIONS]))
+    with tf.name_scope('Output'):
+      self.w_o = tf.Variable(tf.random_normal([FLAGS.hidden, ACTIONS],
+                                              mean=1.0/math.sqrt(float(FLAGS.hidden))),
+                             name='Weights')
+      self.b_o = tf.Variable(tf.random_normal([ACTIONS]),
+                             name='Biases')
 
-    z_o = tf.matmul(a_h, self.w_o) + self.b_o
+      z_o = tf.matmul(a_h, self.w_o) + self.b_o
 
     self.act_probs = tf.nn.softmax(z_o)
 
-    self.reward  = tf.placeholder(tf.float32, [None], name="Reward")
-    self.actions = tf.placeholder(tf.float32, [None, ACTIONS], name="SampledActions")
+    with tf.name_scope('Train'):
+      self.reward  = tf.placeholder(tf.float32, [None], name="Reward")
+      self.actions = tf.placeholder(tf.float32, [None, ACTIONS], name="SampledActions")
 
-    self.loss = tf.reduce_mean(
-      -self.reward *
-      tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=z_o))
-    self.train_step = tf.train.GradientDescentOptimizer(FLAGS.eta).minimize(self.loss)
+      self.loss = tf.reduce_mean(
+        -self.reward *
+        tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=z_o))
+      self.train_step = tf.train.GradientDescentOptimizer(FLAGS.eta).minimize(self.loss)
 
 @attr.s
 class Step(object):
