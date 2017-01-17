@@ -18,7 +18,7 @@ import numpy as np
 
 WIDTH  = 210
 HEIGHT = 160
-PLANES = 3
+PLANES = 1
 ACTIONS = 2
 
 FLAGS = None
@@ -61,6 +61,9 @@ class PingPongModel(object):
         tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=z_o))
       self.train_step = tf.train.GradientDescentOptimizer(FLAGS.eta).minimize(self.loss)
 
+  def save_variables(self):
+    [self.w_h, self.b_h, self.w_o, self.b_o]
+
 @attr.s
 class Step(object):
   this_frame = attr.ib()
@@ -82,6 +85,9 @@ def build_actions(steps):
   actions[np.arange(len(actions)), [s.action for s in steps]] = 1
   return actions
 
+def process_frame(frame):
+  return np.mean(frame, 2).reshape(-1)
+
 def main(_):
   env = gym.make('Pong-v0')
   model = PingPongModel()
@@ -89,7 +95,7 @@ def main(_):
   session = tf.InteractiveSession()
   tf.global_variables_initializer().run()
 
-  this_frame = env.reset().reshape(-1)
+  this_frame = process_frame(env.reset())
   prev_frame = np.zeros_like(this_frame)
 
   steps = []
@@ -122,7 +128,7 @@ def main(_):
                       reward=reward))
 
     prev_frame = this_frame
-    this_frame = next_frame.reshape(-1)
+    this_frame = process_frame(next_frame)
 
     if reward != 0:
       print("reward={0}".format(reward))
