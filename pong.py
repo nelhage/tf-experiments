@@ -137,30 +137,31 @@ def main(_):
       print("reward={0}".format(reward))
 
     if done:
-      train_start = time.time()
+      if FLAGS.train:
+        train_start = time.time()
 
-      rewards = build_rewards(steps)
-      actions = build_actions(steps)
+        rewards = build_rewards(steps)
+        actions = build_actions(steps)
 
-      loss, _ = session.run(
-        [model.loss, model.train_step],
-        feed_dict = {
-          model.this_frame: [s.this_frame for s in steps],
-          model.prev_frame: [s.prev_frame for s in steps],
-          model.actions:    actions,
-          model.reward:     rewards,
-        })
-      train_end = time.time()
+        loss, _ = session.run(
+          [model.loss, model.train_step],
+          feed_dict = {
+            model.this_frame: [s.this_frame for s in steps],
+            model.prev_frame: [s.prev_frame for s in steps],
+            model.actions:    actions,
+            model.reward:     rewards,
+          })
+        train_end = time.time()
 
-      print("done round={round} frames={frames} reward={reward} loss={loss} actions={actions}".format(
-        frames = len(steps),
-        reward = sum([s.reward for s in steps]),
-        actions = collections.Counter([s.action for s in steps]),
-        loss = loss,
-        round = rounds,
-      ))
-      print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
-        train_start-reset_time, train_end-train_start, len(steps)/(train_start-reset_time)))
+        print("done round={round} frames={frames} reward={reward} loss={loss} actions={actions}".format(
+          frames = len(steps),
+          reward = sum([s.reward for s in steps]),
+          actions = collections.Counter([s.action for s in steps]),
+          loss = loss,
+          round = rounds,
+        ))
+        print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
+          train_start-reset_time, train_end-train_start, len(steps)/(train_start-reset_time)))
 
       del steps[:]
       prev_frame = np.zeros_like(this_frame)
@@ -177,6 +178,8 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--render', default=False, action='store_true',
                       help='render simulation')
+  parser.add_argument('--train', default=True, type=bool,
+                      help='Train model')
   parser.add_argument('--hidden', type=int, default=200,
                       help='hidden neurons')
   parser.add_argument('--eta', type=float, default=0.5,
