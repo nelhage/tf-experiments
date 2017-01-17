@@ -43,11 +43,12 @@ class PingPongModel(object):
 
     self.act_probs = tf.nn.softmax(z_o)
 
-    self.reward  = tf.placeholder(tf.float32, [], name="Reward")
+    self.reward  = tf.placeholder(tf.float32, [None], name="Reward")
     self.actions = tf.placeholder(tf.float32, [None, ACTIONS], name="SampledActions")
 
-    self.loss = tf.reduce_mean(self.reward * tf.nn.softmax_cross_entropy_with_logits
-                               (labels=self.actions, logits=z_o))
+    self.loss = tf.reduce_mean(
+      -self.reward *
+      tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=z_o))
     self.train_step = tf.train.GradientDescentOptimizer(FLAGS.eta).minimize(self.loss)
 
 
@@ -63,6 +64,7 @@ def main(_):
 
   frames  = [prev_frame]
   actions = []
+  rewards = []
 
   while True:
     if FLAGS.render:
@@ -84,8 +86,18 @@ def main(_):
     this_frame = this_frame.reshape(-1)
 
     if reward != 0:
-      print("reward={0} frames={1} actions={2}".format
-            (reward, len(actions), collections.Counter(actions)))
+      print("reward={0}".format(reward))
+    rewards.append(reward)
+
+    if done:
+      print("done frames={0} reward={1} actions={2}".format(
+        len(actions), sum(rewards), collections.Counter(actions)))
+
+      r = reward
+      for i in reversed(range(len(rewards))):
+        if rewards[i] != 0:
+          r = rewards[i]
+        rewards[i] = r
 
       actions = actions[1:]
       actionv = np.zeros((len(actions), 6))
@@ -97,12 +109,13 @@ def main(_):
           model.this_frame: frames[1:],
           model.prev_frame: frames[:-1],
           model.actions:    actionv,
-          model.reward:     reward,
+          model.reward:     rewards[1:],
         })
-      print("reward={0} loss={1}".format(reward, loss))
+      print("loss={1}".format(reward, loss))
 
       frames = []
       actions = []
+      rewards = []
 
     frames.append(this_frame)
 
