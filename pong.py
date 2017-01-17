@@ -5,10 +5,12 @@ from __future__ import print_function
 import argparse
 import sys
 import os
-import gym
 import math
-
 import collections
+
+import attr
+
+import gym
 
 import tensorflow as tf
 import numpy as np
@@ -51,6 +53,26 @@ class PingPongModel(object):
       tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=z_o))
     self.train_step = tf.train.GradientDescentOptimizer(FLAGS.eta).minimize(self.loss)
 
+@attr.s
+class Step(object):
+  this_frame = attr.ib()
+  prev_frame = attr.ib()
+  action     = attr.ib()
+  reward     = attr.ib()
+
+def build_rewards(steps):
+  rewards = np.zeros((len(steps),))
+  r = 0
+  for i in reversed(range(len(steps))):
+    if steps[i].reward != 0:
+      r = steps[i].reward
+    rewards[i] = r
+  return rewards
+
+def build_actions(steps):
+  actions = np.zeros((len(steps), ACTIONS))
+  actions[np.arange(len(actions)), [s.action for s in steps]] = 1
+  return actions
 
 def main(_):
   env = gym.make('Pong-v0')
@@ -59,12 +81,10 @@ def main(_):
   session = tf.InteractiveSession()
   tf.global_variables_initializer().run()
 
-  prev_frame = env.reset().reshape(-1)
-  this_frame = prev_frame
+  this_frame = env.reset().reshape(-1)
+  prev_frame = np.zeros_like(this_frame)
 
-  frames  = [prev_frame]
-  actions = []
-  rewards = []
+  steps = []
 
   while True:
     if FLAGS.render:
@@ -79,56 +99,50 @@ def main(_):
         action = i
         break
       r -= a
-    actions.append(action)
+
+    next_frame, reward, done, info = env.step(2 + action)
+
+    steps.append(Step(prev_frame=prev_frame,
+                      this_frame=this_frame,
+                      action=action,
+                      reward=reward))
 
     prev_frame = this_frame
-    this_frame, reward, done, info = env.step(2 + action)
-    this_frame = this_frame.reshape(-1)
+    this_frame = next_frame.reshape(-1)
 
     if reward != 0:
       print("reward={0}".format(reward))
-    rewards.append(reward)
 
     if done:
-      print("done frames={0} reward={1} actions={2}".format(
-        len(actions), sum(rewards), collections.Counter(actions)))
-
-      r = reward
-      for i in reversed(range(len(rewards))):
-        if rewards[i] != 0:
-          r = rewards[i]
-        else:
-          rewards[i] = r
-
-      actions = actions[1:]
-      actionv = np.zeros((len(actions), ACTIONS))
-      actionv[np.arange(len(actions)), actions] = 1
+      rewards = build_rewards(steps)
+      actions = build_actions(steps)
 
       loss, _ = session.run(
         [model.loss, model.train_step],
         feed_dict = {
-          model.this_frame: frames[1:],
-          model.prev_frame: frames[:-1],
-          model.actions:    actionv,
-          model.reward:     rewards[1:],
+          model.this_frame: [s.this_frame for s in steps],
+          model.prev_frame: [s.prev_frame for s in steps],
+          model.actions:    actions,
+          model.reward:     rewards,
         })
-      print("loss={1}".format(reward, loss))
 
-      frames = []
-      actions = []
-      rewards = []
+      print("done frames={0} reward={1} loss={3} actions={2}".format(
+        len(steps),
+        sum([s.reward for s in steps]),
+        collections.Counter([s.action for s in steps]),
+        loss,
+      ))
 
-    frames.append(this_frame)
+      del steps[:]
+      prev_frame = np.zeros_like(this_frame)
 
-    if done:
-      print("done total={0}".format(reward))
       env.reset()
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--render', default=False, action='store_true',
                       help='render simulation')
-  parser.add_argument('--hidden', type=int, default=100,
+  parser.add_argument('--hidden', type=int, default=200,
                       help='hidden neurons')
   parser.add_argument('--eta', type=float, default=0.5,
                       help='learning rate')
