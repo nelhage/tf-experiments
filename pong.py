@@ -6,6 +6,7 @@ import argparse
 import sys
 import os
 import math
+import time
 import collections
 
 import attr
@@ -92,6 +93,7 @@ def main(_):
   prev_frame = np.zeros_like(this_frame)
 
   steps = []
+  reset_time = time.time()
 
   while True:
     if FLAGS.render:
@@ -121,6 +123,8 @@ def main(_):
       print("reward={0}".format(reward))
 
     if done:
+      train_start = time.time()
+
       rewards = build_rewards(steps)
       actions = build_actions(steps)
 
@@ -132,6 +136,7 @@ def main(_):
           model.actions:    actions,
           model.reward:     rewards,
         })
+      train_end = time.time()
 
       print("done frames={0} reward={1} loss={3} actions={2}".format(
         len(steps),
@@ -139,11 +144,14 @@ def main(_):
         collections.Counter([s.action for s in steps]),
         loss,
       ))
+      print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
+        train_start-reset_time, train_end-train_start, len(steps)/(train_start-reset_time)))
 
       del steps[:]
       prev_frame = np.zeros_like(this_frame)
 
       env.reset()
+      reset_time = time.time()
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
