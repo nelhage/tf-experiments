@@ -21,6 +21,8 @@ HEIGHT = 160
 PLANES = 1
 ACTIONS = 2
 
+DISCOUNT = 0.99
+
 FLAGS = None
 
 class PingPongModel(object):
@@ -81,6 +83,9 @@ def build_rewards(steps):
     if steps[i].reward != 0:
       r = steps[i].reward
     rewards[i] = r
+    r *= DISCOUNT
+  rewards -= rewards.mean()
+  rewards /= rewards.std()
   return rewards
 
 def build_actions(steps):
