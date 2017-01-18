@@ -184,8 +184,7 @@ def main(_):
       env.reset()
       reset_time = time.time()
 
-
-if __name__ == '__main__':
+def arg_parser():
   parser = argparse.ArgumentParser()
   parser.add_argument('--render', default=False, action='store_true',
                       help='render simulation')
@@ -204,5 +203,9 @@ if __name__ == '__main__':
 
   parser.add_argument('--debug', action='store_true',
                       help='debug spew')
+  return parser
+
+if __name__ == '__main__':
+  parser = arg_parser()
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
