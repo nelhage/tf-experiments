@@ -1,0 +1,37 @@
+{
+  "builders": [
+    {
+      "type": "amazon-ebs",
+      "region": "us-west-2",
+      "source_ami": "ami-7c803d1c",
+      "instance_type": "g2.2xlarge",
+      "ssh_username": "ubuntu",
+      "ami_name": "gpu {{timestamp}}",
+      "tags": {
+        "build_time": "{{timestamp}}"
+      },
+      "ami_block_device_mappings": [{
+        "device_name": "/dev/sda1",
+        "volume_type": "gp2",
+        "delete_on_termination": true,
+        "volume_size": 40
+      }],
+      "launch_block_device_mappings": [{
+        "device_name": "/dev/sda1",
+        "volume_type": "gp2",
+        "delete_on_termination": true,
+        "volume_size": 40
+      }]
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "shell",
+      "scripts": [
+        "scripts/base.sh",
+        "scripts/cuda.sh"
+      ],
+      "execute_command": "chmod +x {{ .Path }}; sudo {{ .Vars }} {{ .Path }}"
+    }
+  ]
+}
