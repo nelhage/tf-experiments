@@ -2,4 +2,4 @@
 set -eux
 
 apt-get update
-sudo apt-get -y install build-essential virtualenv cmake zlib1g-dev
+sudo apt-get -y install build-essential virtualenv cmake zlib1g-dev linux-tools-commonlinux-tools-generic
