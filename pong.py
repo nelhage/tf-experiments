@@ -9,6 +9,9 @@ import math
 import time
 import collections
 
+import functools
+import operator
+
 import attr
 
 import gym
@@ -26,6 +29,22 @@ DISCOUNT = 0.99
 FLAGS = None
 
 class PingPongModel(object):
+  @staticmethod
+  def weight_variable(shape):
+    initial = tf.truncated_normal(
+      shape, stddev=0.05)
+    return tf.Variable(initial)
+
+  @staticmethod
+  def bias_variable(shape):
+    initial = tf.constant(0.1, shape=shape)
+    return tf.Variable(initial)
+
+  @staticmethod
+  def max_pool_2x2(x):
+    return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
+                          strides=[1, 2, 2, 1], padding='SAME')
+
   def __init__(self):
     with tf.name_scope('Frames'):
       self.prev_frame = tf.placeholder(tf.float32, [None, WIDTH * HEIGHT * PLANES], name="ThisFrame")
@@ -33,27 +52,38 @@ class PingPongModel(object):
 
     deltas = self.this_frame - self.prev_frame
 
-    with tf.name_scope('Hidden'):
-      self.w_h = tf.Variable(tf.random_normal([WIDTH * HEIGHT * PLANES, FLAGS.hidden],
-                                              stddev=1/math.sqrt(WIDTH * HEIGHT * PLANES)),
-                             name='Weights')
-      self.b_h = tf.Variable(tf.zeros([FLAGS.hidden]),
-                             name='Biases')
+    with tf.name_scope('Conv'):
+      frame = tf.reshape(deltas, (-1, WIDTH, HEIGHT, PLANES))
 
-      z_h = tf.matmul(deltas, self.w_h) + self.b_h
+      self.W_conv1 = self.weight_variable((5, 5, PLANES, 32))
+      self.B_conv1 = self.bias_variable((32,))
+
+      h_conv1 = tf.nn.relu(
+        tf.nn.conv2d(frame, self.W_conv1, strides=[1, 2, 2, 1], padding='SAME')
+        + self.B_conv1)
+      h_pool1 = self.max_pool_2x2(h_conv1)
+
+      self.W_conv2 = self.weight_variable((5, 5, 32, 64))
+      self.B_conv2 = self.bias_variable((64,))
+
+      h_conv2 = tf.nn.relu(
+        tf.nn.conv2d(h_pool1, self.W_conv2, strides=[1, 2, 2, 1], padding='SAME')
+        + self.B_conv2)
+      h_pool2 = self.max_pool_2x2(h_conv2)
+
+    with tf.name_scope('Hidden'):
+      self.W_o = self.weight_variable((14*10*64, FLAGS.hidden))
+      self.B_o = self.bias_variable((FLAGS.hidden, ))
+      inp = tf.reshape(h_pool2, (-1, 14*10*64))
+
+      z_h = tf.matmul(inp, self.W_o) + self.B_o
       a_h = tf.nn.relu(z_h)
 
-      tf.summary.histogram('z_h', z_h)
-      tf.summary.histogram('a_h', a_h)
-
     with tf.name_scope('Output'):
-      self.w_o = tf.Variable(tf.random_normal([FLAGS.hidden, ACTIONS],
-                                              stddev=1.0/math.sqrt(float(FLAGS.hidden))),
-                             name='Weights')
-      self.b_o = tf.Variable(tf.zeros([ACTIONS]),
-                             name='Biases')
+      self.W_h = self.weight_variable((FLAGS.hidden, ACTIONS))
+      self.B_h = self.bias_variable((ACTIONS, ))
 
-      self.z_o = tf.matmul(a_h, self.w_o) + self.b_o
+      self.z_o = tf.matmul(a_h, self.W_h) + self.B_h
 
     self.act_probs = tf.nn.softmax(self.z_o)
 
@@ -65,9 +95,6 @@ class PingPongModel(object):
         -self.reward *
         tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o))
       self.train_step = tf.train.GradientDescentOptimizer(FLAGS.eta).minimize(self.loss)
-
-  def save_variables(self):
-    [self.w_h, self.b_h, self.w_o, self.b_o]
 
 @attr.s
 class Step(object):
@@ -106,7 +133,6 @@ def main(_):
   steps = []
   reset_time = time.time()
   saver = tf.train.Saver(
-    model.save_variables(),
     max_to_keep=5, keep_checkpoint_every_n_hours=1)
 
   session = tf.InteractiveSession()
