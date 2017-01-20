@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eux
 
-. "$(dirname "$0")/vars"
+. "$(dirname "$0")/../vars"
 
 instance=$(aws ec2 run-instances \
                    --subnet-id subnet-086c394e \

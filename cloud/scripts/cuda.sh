@@ -14,3 +14,5 @@ cat > /etc/profile.d/cuda.sh <<EOF
 export CUDA_HOME=/usr/local/cuda
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$CUDA_HOME/lib64:$CUDA_HOME/extras/CUPTI/lib64"
 EOF
+
+update-initramfs -k all -u
