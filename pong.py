@@ -47,36 +47,41 @@ class PingPongModel(object):
 
   def __init__(self):
     with tf.name_scope('Frames'):
-      self.prev_frame = tf.placeholder(tf.float32, [None, WIDTH * HEIGHT * PLANES], name="ThisFrame")
-      self.this_frame = tf.placeholder(tf.float32, [None, WIDTH * HEIGHT * PLANES], name="PrevFrame")
+      self.prev_frame = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="ThisFrame")
+      self.this_frame = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="PrevFrame")
 
     deltas = self.this_frame - self.prev_frame
+    deltas = deltas[:,::2,::2]
 
     with tf.name_scope('Conv'):
-      frame = tf.reshape(deltas, (-1, WIDTH, HEIGHT, PLANES))
+      frame = tf.reshape(deltas, (-1, WIDTH//2, HEIGHT//2, PLANES))
 
-      self.W_conv1 = self.weight_variable((5, 5, PLANES, 32))
-      self.B_conv1 = self.bias_variable((32,))
+      self.W_conv1 = self.weight_variable((4, 4, PLANES, 16))
+      self.B_conv1 = self.bias_variable((16,))
 
-      h_conv1 = tf.nn.relu(
+      self.h_conv1 = tf.nn.relu(
         tf.nn.conv2d(frame, self.W_conv1, strides=[1, 2, 2, 1], padding='SAME')
         + self.B_conv1)
-      h_pool1 = self.max_pool_2x2(h_conv1)
+      self.h_pool1 = self.max_pool_2x2(self.h_conv1)
+      tf.summary.histogram('conv1', self.h_conv1)
 
-      self.W_conv2 = self.weight_variable((5, 5, 32, 64))
-      self.B_conv2 = self.bias_variable((64,))
+      self.W_conv2 = self.weight_variable((4, 4, 16, 16))
+      self.B_conv2 = self.bias_variable((16,))
 
-      h_conv2 = tf.nn.relu(
-        tf.nn.conv2d(h_pool1, self.W_conv2, strides=[1, 2, 2, 1], padding='SAME')
+      self.h_conv2 = tf.nn.relu(
+        tf.nn.conv2d(self.h_conv1, self.W_conv2, strides=[1, 2, 2, 1], padding='SAME')
         + self.B_conv2)
-      h_pool2 = self.max_pool_2x2(h_conv2)
+      self.h_pool2 = self.max_pool_2x2(self.h_conv2)
+      tf.summary.histogram('conv2', self.h_conv2)
 
     with tf.name_scope('Hidden'):
-      self.W_o = self.weight_variable((14*10*64, FLAGS.hidden))
+      channels = int(functools.reduce(operator.mul, self.h_pool2.get_shape()[1:]))
+      self.W_o = self.weight_variable((channels, FLAGS.hidden))
       self.B_o = self.bias_variable((FLAGS.hidden, ))
-      inp = tf.reshape(h_pool2, (-1, 14*10*64))
+      inp = tf.reshape(self.h_pool2, (-1, channels))
 
       z_h = tf.matmul(inp, self.W_o) + self.B_o
+      tf.summary.histogram('z_h', z_h)
       a_h = tf.nn.relu(z_h)
 
     with tf.name_scope('Output'):
@@ -121,7 +126,7 @@ def build_actions(steps):
   return actions
 
 def process_frame(frame):
-  return np.mean(frame, 2).reshape(-1)
+  return np.expand_dims(np.mean(frame, 2), -1)
 
 def main(_):
   env = gym.make('Pong-v0')
@@ -221,7 +226,7 @@ def arg_parser():
                       help='render simulation')
   parser.add_argument('--train', default=True, type=bool,
                       help='Train model')
-  parser.add_argument('--hidden', type=int, default=200,
+  parser.add_argument('--hidden', type=int, default=20,
                       help='hidden neurons')
   parser.add_argument('--eta', type=float, default=0.5,
                       help='learning rate')
@@ -240,3 +245,5 @@ if __name__ == '__main__':
   parser = arg_parser()
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+else:
+  FLAGS = arg_parser().parse_args([])
