@@ -1,0 +1,14 @@
+#!/bin/bash
+set -eux
+here="$(dirname "$0")"
+. "$here/common.sh"
+instance="$1"; shift
+host=$(instance_hostname "$instance")
+
+rsync -Pax --exclude=/models \
+      --exclude=/.git \
+      --exclude=/data \
+      --exclude=/venv \
+      --exclude=/symmary \
+      --exclude=/neurons \
+      "$here/../.." "ubuntu@$host:ml"
