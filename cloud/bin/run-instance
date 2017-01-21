@@ -11,4 +11,5 @@ instance=$(aws ec2 run-instances \
                    --key-name nelhage-1 \
                    --output=text \
                    --query='Instances[0].InstanceId')
-echo "Launched $instance..."
+echo "Launched $instance..." >&2
+echo "$instance"
