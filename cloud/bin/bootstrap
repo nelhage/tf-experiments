@@ -1,0 +1,9 @@
+#!/bin/bash
+set -eux
+here="$(dirname "$0")"
+. "$here/common.sh"
+cd "$here/../.."
+rm -rf venv
+virtualenv --python=python3 venv
+venv/bin/pip install -r requirements.txt
+venv/bin/pip install tensorflow-gpu
