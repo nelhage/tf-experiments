@@ -98,7 +98,7 @@ class PingPongModel(object):
 
       self.cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o)
       self.loss = tf.reduce_mean(-self.reward * self.cross_entropy)
-      self.train_step = tf.train.GradientDescentOptimizer(FLAGS.eta).minimize(self.loss)
+      self.train_step = tf.train.AdamOptimizer(FLAGS.eta).minimize(self.loss)
 
 @attr.s
 class Step(object):
@@ -231,7 +231,7 @@ def arg_parser():
                       help='Train model')
   parser.add_argument('--hidden', type=int, default=20,
                       help='hidden neurons')
-  parser.add_argument('--eta', type=float, default=0.5,
+  parser.add_argument('--eta', type=float, default=1e-4,
                       help='learning rate')
   parser.add_argument('--checkpoint', type=int, default=0,
                       help='checkpoint every N rounds')
