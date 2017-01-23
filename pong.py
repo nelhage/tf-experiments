@@ -190,8 +190,15 @@ def main(_):
         rewards = build_rewards(steps)
         actions = build_actions(steps)
 
-        loss, summary, _ = session.run(
-          [model.loss, summary_op, model.train_step],
+        ops = {
+          'loss': model.loss,
+          'summary' : summary_op,
+        }
+        if any((s.reward > 0 for s in steps)):
+          ops['train'] = model.train_step
+
+        out = session.run(
+          ops,
           feed_dict = {
             model.this_frame: [s.this_frame for s in steps],
             model.prev_frame: [s.prev_frame for s in steps],
@@ -206,7 +213,7 @@ def main(_):
           reward = sum([s.reward for s in steps]),
           avgreward = avgreward,
           actions = collections.Counter([s.action for s in steps]),
-          loss = loss,
+          loss = out['loss'],
           round = rounds,
         ))
         print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
@@ -222,7 +229,7 @@ def main(_):
         except FileExistsError:
           pass
         saver.save(session, FLAGS.checkpoint_path, global_step=rounds)
-        summary_writer.add_summary(summary, rounds)
+        summary_writer.add_summary(out['summary'], rounds)
 
       env.reset()
       reset_time = time.time()
