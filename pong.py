@@ -147,7 +147,7 @@ def main(_):
     tf.global_variables_initializer().run()
 
   summary_op = tf.summary.merge_all()
-  summary_writer = tf.summary.FileWriter('summary', session.graph)
+  summary_writer = tf.summary.FileWriter('train/summary', session.graph)
 
   rounds = 0
 

@@ -9,6 +9,6 @@ rsync -Pax --exclude=/models \
       --exclude=/.git \
       --exclude=/data \
       --exclude=/venv \
-      --exclude=/symmary \
+      --exclude=/train \
       --exclude=/neurons \
       "$here/../.." "ubuntu@$host:ml"
