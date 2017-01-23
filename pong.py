@@ -76,19 +76,19 @@ class PingPongModel(object):
 
     with tf.name_scope('Hidden'):
       channels = int(functools.reduce(operator.mul, self.h_pool2.get_shape()[1:]))
-      self.W_o = self.weight_variable((channels, FLAGS.hidden))
-      self.B_o = self.bias_variable((FLAGS.hidden, ))
+      self.W_h = self.weight_variable((channels, FLAGS.hidden))
+      self.B_h = self.bias_variable((FLAGS.hidden, ))
       inp = tf.reshape(self.h_pool2, (-1, channels))
 
-      z_h = tf.matmul(inp, self.W_o) + self.B_o
+      z_h = tf.matmul(inp, self.W_h) + self.B_h
       tf.summary.histogram('z_h', z_h)
       a_h = tf.nn.relu(z_h)
 
     with tf.name_scope('Output'):
-      self.W_h = self.weight_variable((FLAGS.hidden, ACTIONS))
-      self.B_h = self.bias_variable((ACTIONS, ))
+      self.W_o = self.weight_variable((FLAGS.hidden, ACTIONS))
+      self.B_o = self.bias_variable((ACTIONS, ))
 
-      self.z_o = tf.matmul(a_h, self.W_h) + self.B_h
+      self.z_o = tf.matmul(a_h, self.W_o) + self.B_o
 
     self.act_probs = tf.nn.softmax(self.z_o)
 
@@ -96,9 +96,8 @@ class PingPongModel(object):
       self.reward  = tf.placeholder(tf.float32, [None], name="Reward")
       self.actions = tf.placeholder(tf.float32, [None, ACTIONS], name="SampledActions")
 
-      self.loss = tf.reduce_mean(
-        -self.reward *
-        tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o))
+      self.cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o)
+      self.loss = tf.reduce_mean(-self.reward * self.cross_entropy)
       self.train_step = tf.train.GradientDescentOptimizer(FLAGS.eta).minimize(self.loss)
 
 @attr.s
