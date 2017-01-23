@@ -150,6 +150,8 @@ def main(_):
 
   rounds = 0
 
+  avgreward = 0
+
   while True:
     if FLAGS.render:
       env.render()
@@ -198,9 +200,11 @@ def main(_):
           })
         train_end = time.time()
 
-        print("done round={round} frames={frames} reward={reward} loss={loss} actions={actions}".format(
+        avgreward = 0.9 * avgreward + 0.1 * sum([s.reward for s in steps])
+        print("done round={round} frames={frames} reward={reward} expreward={avgreward:.1f} loss={loss} actions={actions}".format(
           frames = len(steps),
           reward = sum([s.reward for s in steps]),
+          avgreward = avgreward,
           actions = collections.Counter([s.action for s in steps]),
           loss = loss,
           round = rounds,
