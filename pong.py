@@ -213,6 +213,10 @@ def main(_):
 
       rounds += 1
       if FLAGS.checkpoint > 0 and rounds % FLAGS.checkpoint == 0:
+        try:
+          os.makedirs(os.path.dirname(FLAGS.checkpoint_path))
+        except FileExistsError:
+          pass
         saver.save(session, FLAGS.checkpoint_path, global_step=rounds)
         summary_writer.add_summary(summary, rounds)
 
@@ -231,7 +235,7 @@ def arg_parser():
                       help='learning rate')
   parser.add_argument('--checkpoint', type=int, default=0,
                       help='checkpoint every N rounds')
-  parser.add_argument('--checkpoint_path', type=str, default='models/pong',
+  parser.add_argument('--checkpoint_path', type=str, default='train/models/pong',
                       help='checkpoint path')
   parser.add_argument('--load_model', type=str, default=None,
                       help='restore model')
