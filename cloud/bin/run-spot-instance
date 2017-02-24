@@ -1,0 +1,21 @@
+#!/bin/bash
+set -eux
+
+. "$(dirname "$0")/../vars"
+
+request=$(aws ec2 request-spot-instances \
+    --spot-price "$spot_price" \
+    --launch-specification='
+{
+ "ImageId": "'"$ami"'",
+ "SubnetId": "subnet-086c394e",
+ "InstanceType": "g2.2xlarge",
+ "SecurityGroupIds": ["sg-15464c77"],
+ "KeyName": "nelhage-1"
+}
+' \
+    --output=text \
+    --query='SpotInstanceRequests[].SpotInstanceRequestId')
+echo "Launched request $request..."
+sleep 1
+aws ec2 describe-spot-instance-requests --spot-instance-request-ids "$request"
