@@ -16,6 +16,15 @@ request=$(aws ec2 request-spot-instances \
 ' \
     --output=text \
     --query='SpotInstanceRequests[].SpotInstanceRequestId')
-echo "Launched request $request..."
-sleep 1
-aws ec2 describe-spot-instance-requests --spot-instance-request-ids "$request"
+echo "Launched request $request..." >&2
+while :; do
+    sleep 1
+    json=$(aws ec2 describe-spot-instance-requests --spot-instance-request-ids "$request")
+    code=$(echo "$json" | jq -r '.SpotInstanceRequests[].Status.Code')
+    if [ "$code" != "pending" ]; then
+        break
+    fi
+    echo "Request still pending..." >&2
+done
+
+echo "$json" | jq -r '.SpotInstanceRequests[].InstanceId'
