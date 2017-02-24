@@ -28,10 +28,17 @@
     {
       "type": "shell",
       "scripts": [
-        "scripts/base.sh",
-        "scripts/cuda.sh"
+          "scripts/base.sh",
+          "scripts/cuda.sh"
       ],
       "execute_command": "chmod +x {{ .Path }}; sudo {{ .Vars }} {{ .Path }}"
+    },
+    {
+      "type": "shell",
+      "scripts": [
+          "scripts/tf.sh"
+      ],
+      "execute_command": "chmod +x {{ .Path }}; sudo -u ubuntu {{ .Vars }} {{ .Path }}"
     }
   ]
 }
