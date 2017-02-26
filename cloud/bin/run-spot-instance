@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eux
+set -eu
 
 . "$(dirname "$0")/../vars"
 
@@ -21,10 +21,17 @@ while :; do
     sleep 1
     json=$(aws ec2 describe-spot-instance-requests --spot-instance-request-ids "$request")
     code=$(echo "$json" | jq -r '.SpotInstanceRequests[].Status.Code')
-    if [ "$code" != "pending" ]; then
+    if [ "$code" != "pending" ] && [ "$code" != "pending-fulfillment" ]; then
         break
     fi
     echo "Request still pending..." >&2
 done
 
-echo "$json" | jq -r '.SpotInstanceRequests[].InstanceId'
+instance=$(echo "$json" | jq -r '.SpotInstanceRequests[].InstanceId')
+if [ "$instance" != "null" ]; then
+    echo "Booted instance $instance..." >&2
+    echo "$instance"
+else
+    echo "Failed to boot" >&2
+    echo "$json" >&2
+fi
