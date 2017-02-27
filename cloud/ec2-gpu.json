@@ -1,10 +1,15 @@
 {
+  "variables": {
+    "base_ami": "ami-edf6758d",
+    "instance_type": "g2.2xlarge",
+    "region": "us-west-2"
+  },
   "builders": [
     {
       "type": "amazon-ebs",
-      "region": "us-west-2",
-      "source_ami": "ami-7c803d1c",
-      "instance_type": "g2.2xlarge",
+      "region": "{{user `region`}}",
+      "source_ami": "{{user `base_ami`}}",
+      "instance_type": "{{user `instance_type`}}",
       "ssh_username": "ubuntu",
       "ami_name": "gpu {{timestamp}}",
       "tags": {
@@ -28,7 +33,13 @@
     {
       "type": "shell",
       "scripts": [
-          "scripts/base.sh",
+        "scripts/base.sh"
+      ],
+      "execute_command": "chmod +x {{ .Path }}; sudo {{ .Vars }} {{ .Path }}"
+    },
+    {
+      "type": "shell",
+      "scripts": [
           "scripts/cuda.sh"
       ],
       "execute_command": "chmod +x {{ .Path }}; sudo {{ .Vars }} {{ .Path }}"

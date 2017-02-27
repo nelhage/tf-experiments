@@ -1,0 +1,8 @@
+#!/bin/bash
+set -eux
+
+. "$(dirname "$0")/../vars"
+exec packer build \
+     -var "base_ami=$base_ami" \
+     -var "instance_type=$instance_type" \
+     "$(dirname "$0")/../ec2-gpu.json"

@@ -1,3 +1,5 @@
-ami=ami-c0eb68a0
+ami=ami-2c03804c
+base_ami=ami-edf6758d
 user=ubuntu
+instance_type=g2.2xlarge
 spot_price=0.65
