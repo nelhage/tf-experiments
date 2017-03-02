@@ -2,10 +2,11 @@ ami=ami-0cd25f6c
 base_ami=ami-edf6758d
 user=ubuntu
 instance_type=p2.xlarge
-spot_price=0.65
+spot_price=0.9
 
 case $instance_type in
     g2*)
+        spot_price=0.65
         ami=ami-d5d75ab5
         ;;
 esac

@@ -9,7 +9,7 @@ request=$(aws ec2 request-spot-instances \
 {
  "ImageId": "'"$ami"'",
  "SubnetId": "subnet-086c394e",
- "InstanceType": "g2.2xlarge",
+ "InstanceType": "'"$instance_type"'",
  "SecurityGroupIds": ["sg-15464c77"],
  "KeyName": "nelhage-1"
 }

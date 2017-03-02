@@ -6,7 +6,7 @@ set -eux
 instance=$(aws ec2 run-instances \
                    --subnet-id subnet-086c394e \
                    --image-id "$ami" \
-                   --instance-type g2.2xlarge \
+                   --instance-type "$instance_type" \
                    --security-group-ids '["sg-15464c77"]' \
                    --key-name nelhage-1 \
                    --output=text \
