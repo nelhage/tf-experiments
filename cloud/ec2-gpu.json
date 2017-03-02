@@ -40,7 +40,8 @@
     {
       "type": "shell",
       "scripts": [
-          "scripts/cuda.sh"
+        "scripts/cuda.sh",
+        "scripts/lfs.sh"
       ],
       "execute_command": "chmod +x {{ .Path }}; sudo {{ .Vars }} {{ .Path }}"
     },
