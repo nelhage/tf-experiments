@@ -4,15 +4,23 @@ set -eux
 apt-get -y install libcupti-dev "linux-image-extra-$(uname -r)"
 cd /tmp/
 
-# Driver (g2.2xlarge)
+# Driver
 
-curl -LO http://us.download.nvidia.com/XFree86/Linux-x86_64/367.57/NVIDIA-Linux-x86_64-367.57.run
-sh NVIDIA-Linux-x86_64-367.57.run -a -q --ui=none
+driver=--driver
+if [ "$(lspci -mmn -d 10de:118a)" ]; then
+    echo "Installing for GRID K520"
+    curl -LO http://us.download.nvidia.com/XFree86/Linux-x86_64/367.57/NVIDIA-Linux-x86_64-367.57.run
+    sh NVIDIA-Linux-x86_64-367.57.run -a -q --ui=none
+    driver=
+else
+    lspci -nn -d 10de:
+    echo "Installing most recent driver."
+fi
 
 # CUDA
 
 curl -LO https://developer.nvidia.com/compute/cuda/8.0/Prod2/local_installers/cuda_8.0.61_375.26_linux-run
-sh cuda_8.0.61_375.26_linux-run --silent --toolkit --toolkitpath=/usr/local/cuda-8.0 --verbose
+sh cuda_8.0.61_375.26_linux-run $driver --silent --toolkit --toolkitpath=/usr/local/cuda-8.0 --verbose
 
 if ! grep -q 'CUDA Version 8' /usr/local/cuda-8.0/version.txt; then
     echo "CUDA install failed!" >&2
