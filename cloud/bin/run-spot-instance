@@ -21,7 +21,7 @@ while :; do
     sleep 1
     json=$(aws ec2 describe-spot-instance-requests --spot-instance-request-ids "$request")
     code=$(echo "$json" | jq -r '.SpotInstanceRequests[].Status.Code')
-    if [ "$code" != "pending" ] && [ "$code" != "pending-fulfillment" ]; then
+    if [ "${code#pending}" == "$code" ]; then
         break
     fi
     echo "Request still pending..." >&2
