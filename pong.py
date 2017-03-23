@@ -104,7 +104,7 @@ class PingPongModel(object):
 
       self.cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o)
       self.pg_loss = tf.reduce_mean(-self.adv * self.cross_entropy)
-      self.v_loss = 0.5 * tf.reduce_sum(tf.square(self.vp - self.rewards))
+      self.v_loss = 0.5 * tf.reduce_mean(tf.square(self.vp - self.rewards))
 
       self.loss = self.pg_loss + 0.5 * self.v_loss
 
