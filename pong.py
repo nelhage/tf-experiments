@@ -90,14 +90,24 @@ class PingPongModel(object):
 
       self.z_o = tf.matmul(a_h, self.W_o) + self.B_o
 
-    self.act_probs = tf.nn.softmax(self.z_o)
+      self.W_v = self.weight_variable((FLAGS.hidden, 1))
+      self.B_v = self.bias_variable((1,))
+
+    self.logits = self.z_o
+    self.act_probs = tf.nn.softmax(self.logits)
+    self.vp = tf.reshape(tf.tanh(tf.matmul(a_h, self.W_v) + self.B_v), (-1,))
 
     with tf.name_scope('Train'):
-      self.reward  = tf.placeholder(tf.float32, [None], name="Reward")
+      self.adv  = tf.placeholder(tf.float32, [None], name="Advantage")
+      self.rewards = tf.placeholder(tf.float32, [None], name="Reward")
       self.actions = tf.placeholder(tf.float32, [None, ACTIONS], name="SampledActions")
 
       self.cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o)
-      self.loss = tf.reduce_mean(-self.reward * self.cross_entropy)
+      self.pg_loss = tf.reduce_mean(-self.adv * self.cross_entropy)
+      self.v_loss = 0.5 * tf.reduce_sum(tf.square(self.vp - self.rewards))
+
+      self.loss = self.pg_loss + 0.5 * self.v_loss
+
       self.train_step = tf.train.AdamOptimizer(FLAGS.eta).minimize(self.loss)
 
 @attr.s
@@ -106,6 +116,7 @@ class Step(object):
   prev_frame = attr.ib()
   action     = attr.ib()
   reward     = attr.ib()
+  vp         = attr.ib()
 
 def build_rewards(steps):
   rewards = np.zeros((len(steps),))
@@ -115,9 +126,12 @@ def build_rewards(steps):
       r = steps[i].reward
     rewards[i] = r
     r *= DISCOUNT
-  rewards -= rewards.mean()
-  rewards /= rewards.std()
+
   return rewards
+
+def build_advantage(steps, reward):
+  vp = np.array([s.vp for s in steps])
+  return reward - vp
 
 def build_actions(steps):
   actions = np.zeros((len(steps), ACTIONS))
@@ -156,9 +170,13 @@ def main(_):
     if FLAGS.render:
       env.render()
 
-    z, act_probs = session.run([model.z_o, model.act_probs], feed_dict={
-      model.this_frame: np.expand_dims(this_frame, 0),
-      model.prev_frame: np.expand_dims(prev_frame, 0)})
+    z, act_probs, vp = session.run(
+      [model.z_o, model.act_probs, model.vp],
+      feed_dict=
+      {
+        model.this_frame: np.expand_dims(this_frame, 0),
+        model.prev_frame: np.expand_dims(prev_frame, 0)
+      })
     if FLAGS.debug:
       print("up={0:.3f} down={1:.3f} z={2}".
             format(act_probs[0][0], act_probs[0][1], z[0]))
@@ -175,7 +193,9 @@ def main(_):
     steps.append(Step(prev_frame=prev_frame,
                       this_frame=this_frame,
                       action=action,
-                      reward=reward))
+                      reward=reward,
+                      vp=vp[0],
+    ))
 
     prev_frame = this_frame
     this_frame = process_frame(next_frame)
@@ -188,10 +208,12 @@ def main(_):
         train_start = time.time()
 
         rewards = build_rewards(steps)
+        adv     = build_advantage(steps, rewards)
         actions = build_actions(steps)
 
         ops = {
-          'loss': model.loss,
+          'pg_loss': model.pg_loss,
+          'v_loss': model.v_loss,
           'summary' : summary_op,
         }
         if any((s.reward > 0 for s in steps)):
@@ -203,17 +225,19 @@ def main(_):
             model.this_frame: [s.this_frame for s in steps],
             model.prev_frame: [s.prev_frame for s in steps],
             model.actions:    actions,
-            model.reward:     rewards,
+            model.rewards:    rewards,
+            model.adv:        adv,
           })
         train_end = time.time()
 
         avgreward = 0.9 * avgreward + 0.1 * sum([s.reward for s in steps])
-        print("done round={round} frames={frames} reward={reward} expreward={avgreward:.1f} loss={loss} actions={actions}".format(
+        print("done round={round} frames={frames} reward={reward} expreward={avgreward:.1f} pg_loss={pg_loss} v_loss={v_loss} actions={actions}".format(
           frames = len(steps),
           reward = sum([s.reward for s in steps]),
           avgreward = avgreward,
           actions = collections.Counter([s.action for s in steps]),
-          loss = out['loss'],
+          pg_loss = out['pg_loss'],
+          v_loss = out['v_loss'],
           round = rounds,
         ))
         print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
