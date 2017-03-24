@@ -110,6 +110,7 @@ class PingPongModel(object):
       tf.summary.scalar('value_loss', self.v_loss)
       self.entropy = -tf.reduce_mean(
         tf.reduce_sum(self.act_probs * tf.nn.log_softmax(self.logits), axis=1))
+      tf.summary.scalar('entropy', self.entropy)
 
       self.loss = (
         FLAGS.pg_weight * self.pg_loss +
@@ -167,8 +168,14 @@ def main(_):
   else:
     tf.global_variables_initializer().run()
 
+  if FLAGS.checkpoint:
+    try:
+      os.makedirs(os.path.dirname(FLAGS.logdir))
+    except FileExistsError:
+      pass
+
   summary_op = tf.summary.merge_all()
-  summary_writer = tf.summary.FileWriter('train/summary', session.graph)
+  summary_writer = tf.summary.FileWriter(FLAGS.logdir, session.graph)
 
   rounds = 0
 
@@ -223,9 +230,8 @@ def main(_):
           'pg_loss': model.pg_loss,
           'v_loss': model.v_loss,
           'summary' : summary_op,
+          'train': model.train_step,
         }
-        if any((s.reward > 0 for s in steps)):
-          ops['train'] = model.train_step
 
         out = session.run(
           ops,
@@ -256,11 +262,7 @@ def main(_):
 
       rounds += 1
       if FLAGS.checkpoint > 0 and rounds % FLAGS.checkpoint == 0:
-        try:
-          os.makedirs(os.path.dirname(FLAGS.checkpoint_path))
-        except FileExistsError:
-          pass
-        saver.save(session, FLAGS.checkpoint_path, global_step=rounds)
+        saver.save(session, os.path.join(FLAGS.logdir, 'pong'), global_step=rounds)
         summary_writer.add_summary(out['summary'], rounds)
 
       env.reset()
@@ -278,8 +280,8 @@ def arg_parser():
                       help='learning rate')
   parser.add_argument('--checkpoint', type=int, default=0,
                       help='checkpoint every N rounds')
-  parser.add_argument('--checkpoint_path', type=str, default='train/models/pong',
-                      help='checkpoint path')
+  parser.add_argument('--logdir', type=str, default='train/models',
+                      help='log path')
   parser.add_argument('--load_model', type=str, default=None,
                       help='restore model')
 
