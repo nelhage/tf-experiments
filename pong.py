@@ -100,13 +100,18 @@ class PingPongModel(object):
     with tf.name_scope('Train'):
       self.adv  = tf.placeholder(tf.float32, [None], name="Advantage")
       self.rewards = tf.placeholder(tf.float32, [None], name="Reward")
+      tf.summary.scalar('reward', tf.reduce_mean(self.rewards))
       self.actions = tf.placeholder(tf.float32, [None, ACTIONS], name="SampledActions")
 
       self.cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o)
       self.pg_loss = tf.reduce_mean(-self.adv * self.cross_entropy)
+      tf.summary.scalar('pg_loss', self.pg_loss)
       self.v_loss = 0.5 * tf.reduce_mean(tf.square(self.vp - self.rewards))
+      tf.summary.scalar('value_loss', self.v_loss)
+      self.entropy = -tf.reduce_mean(
+        tf.reduce_sum(self.act_probs * tf.nn.log_softmax(self.logits), axis=1))
 
-      self.loss = self.pg_loss + 0.5 * self.v_loss
+      self.loss = self.pg_loss + 0.5 * self.v_loss + 0.01 * self.entropy
 
       self.train_step = tf.train.AdamOptimizer(FLAGS.eta).minimize(self.loss)
 
