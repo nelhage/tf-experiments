@@ -104,14 +104,17 @@ class PingPongModel(object):
       self.actions = tf.placeholder(tf.float32, [None, ACTIONS], name="SampledActions")
 
       self.cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o)
-      self.pg_loss = tf.reduce_mean(-self.adv * self.cross_entropy)
+      self.pg_loss = tf.reduce_mean(self.adv * self.cross_entropy)
       tf.summary.scalar('pg_loss', self.pg_loss)
       self.v_loss = 0.5 * tf.reduce_mean(tf.square(self.vp - self.rewards))
       tf.summary.scalar('value_loss', self.v_loss)
       self.entropy = -tf.reduce_mean(
         tf.reduce_sum(self.act_probs * tf.nn.log_softmax(self.logits), axis=1))
 
-      self.loss = self.pg_loss + 0.5 * self.v_loss + 0.01 * self.entropy
+      self.loss = (
+        FLAGS.pg_weight * self.pg_loss +
+        FLAGS.v_weight * self.v_loss -
+        FLAGS.entropy_weight * self.entropy)
 
       self.train_step = tf.train.AdamOptimizer(FLAGS.eta).minimize(self.loss)
 
@@ -282,6 +285,10 @@ def arg_parser():
 
   parser.add_argument('--debug', action='store_true',
                       help='debug spew')
+
+  parser.add_argument('--pg_weight', type=float, default=1.0)
+  parser.add_argument('--v_weight', type=float, default=0.5)
+  parser.add_argument('--entropy_weight', type=float, default=0.01)
   return parser
 
 if __name__ == '__main__':
