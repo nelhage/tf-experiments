@@ -97,6 +97,7 @@ class PingPongModel(object):
     self.act_probs = tf.nn.softmax(self.logits)
     self.vp = tf.reshape(tf.tanh(tf.matmul(a_h, self.W_v) + self.B_v), (-1,))
 
+  def add_train_ops(self):
     with tf.name_scope('Train'):
       self.adv  = tf.placeholder(tf.float32, [None], name="Advantage")
       self.rewards = tf.placeholder(tf.float32, [None], name="Reward")
@@ -153,6 +154,8 @@ def process_frame(frame):
 def main(_):
   env = gym.make('Pong-v0')
   model = PingPongModel()
+  if FLAGS.train:
+    model.add_train_ops()
 
   this_frame = process_frame(env.reset())
   prev_frame = np.zeros_like(this_frame)
@@ -272,8 +275,10 @@ def arg_parser():
   parser = argparse.ArgumentParser()
   parser.add_argument('--render', default=False, action='store_true',
                       help='render simulation')
-  parser.add_argument('--train', default=True, type=bool,
+  parser.add_argument('--train', default=True, action='store_true',
                       help='Train model')
+  parser.add_argument('--no-train', action='store_false', dest='train',
+                      help="Don't train")
   parser.add_argument('--hidden', type=int, default=20,
                       help='hidden neurons')
   parser.add_argument('--eta', type=float, default=1e-4,
