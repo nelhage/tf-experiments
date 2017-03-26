@@ -40,51 +40,57 @@ class PingPongModel(object):
     initial = tf.constant(0.1, shape=shape)
     return tf.Variable(initial)
 
-  @staticmethod
-  def max_pool_2x2(x):
-    return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
-                          strides=[1, 2, 2, 1], padding='SAME')
-
   def __init__(self):
-    with tf.name_scope('Frames'):
+    with tf.variable_scope('Frames'):
       self.prev_frame = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="ThisFrame")
       self.this_frame = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="PrevFrame")
 
     deltas = self.this_frame - self.prev_frame
     deltas = deltas[:,::2,::2]
 
-    with tf.name_scope('Conv'):
+    with tf.variable_scope('Conv'):
       frame = tf.reshape(deltas, (-1, WIDTH//2, HEIGHT//2, PLANES))
 
-      self.W_conv1 = self.weight_variable((4, 4, PLANES, 16))
-      self.B_conv1 = self.bias_variable((16,))
+      activations = tf.contrib.layers.conv2d(
+        frame,
+        num_outputs=16,
+        padding='SAME',
+        kernel_size=4,
+        trainable=True,
+        stride=2,
+        activation_fn=tf.nn.relu,
+      )
+      activations = tf.contrib.layers.max_pool2d(
+        activations,
+        kernel_size=2,
+      )
+      activations = tf.contrib.layers.conv2d(
+        activations,
+        num_outputs=16,
+        padding='SAME',
+        kernel_size=4,
+        trainable=True,
+        stride=2,
+        activation_fn=tf.nn.relu,
+      )
+      activations = tf.contrib.layers.max_pool2d(
+        activations,
+        kernel_size=2,
+      )
 
-      self.h_conv1 = tf.nn.relu(
-        tf.nn.conv2d(frame, self.W_conv1, strides=[1, 2, 2, 1], padding='SAME')
-        + self.B_conv1)
-      self.h_pool1 = self.max_pool_2x2(self.h_conv1)
-      tf.summary.histogram('conv1', self.h_conv1)
+      self.activations = activations
 
-      self.W_conv2 = self.weight_variable((4, 4, 16, 16))
-      self.B_conv2 = self.bias_variable((16,))
-
-      self.h_conv2 = tf.nn.relu(
-        tf.nn.conv2d(self.h_conv1, self.W_conv2, strides=[1, 2, 2, 1], padding='SAME')
-        + self.B_conv2)
-      self.h_pool2 = self.max_pool_2x2(self.h_conv2)
-      tf.summary.histogram('conv2', self.h_conv2)
-
-    with tf.name_scope('Hidden'):
-      channels = int(functools.reduce(operator.mul, self.h_pool2.get_shape()[1:]))
+    with tf.variable_scope('Hidden'):
+      channels = int(functools.reduce(operator.mul, activations.get_shape()[1:]))
       self.W_h = self.weight_variable((channels, FLAGS.hidden))
       self.B_h = self.bias_variable((FLAGS.hidden, ))
-      inp = tf.reshape(self.h_pool2, (-1, channels))
+      inp = tf.reshape(self.activations, (-1, channels))
 
       z_h = tf.matmul(inp, self.W_h) + self.B_h
       tf.summary.histogram('z_h', z_h)
       a_h = tf.nn.relu(z_h)
 
-    with tf.name_scope('Output'):
+    with tf.variable_scope('Output'):
       self.W_o = self.weight_variable((FLAGS.hidden, ACTIONS))
       self.B_o = self.bias_variable((ACTIONS, ))
 
@@ -98,7 +104,7 @@ class PingPongModel(object):
     self.vp = tf.reshape(tf.tanh(tf.matmul(a_h, self.W_v) + self.B_v), (-1,))
 
   def add_train_ops(self):
-    with tf.name_scope('Train'):
+    with tf.variable_scope('Train'):
       self.adv  = tf.placeholder(tf.float32, [None], name="Advantage")
       self.rewards = tf.placeholder(tf.float32, [None], name="Reward")
       tf.summary.scalar('reward', tf.reduce_mean(self.rewards))
