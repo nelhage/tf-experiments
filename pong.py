@@ -102,7 +102,7 @@ class PingPongModel(object):
 
     self.logits = self.z_o
     self.act_probs = tf.nn.softmax(self.logits)
-    self.vp = tf.reshape(tf.tanh(tf.matmul(a_h, self.W_v) + self.B_v), (-1,))
+    self.vp = tf.reshape(tf.matmul(a_h, self.W_v) + self.B_v, (-1,))
 
   def add_train_ops(self):
     with tf.variable_scope('Train'):
