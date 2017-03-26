@@ -127,7 +127,13 @@ class PingPongModel(object):
         FLAGS.entropy_weight * self.entropy)
 
       with tf.control_dependencies([self.global_step.assign_add(1)]):
-        self.train_step = tf.train.AdamOptimizer(FLAGS.eta).minimize(self.loss)
+        self.optimizer = tf.train.AdamOptimizer(FLAGS.eta)
+        grads = self.optimizer.compute_gradients(self.loss)
+        clipped, norm = tf.clip_by_global_norm(
+          [g for (g, v) in grads], FLAGS.clip_gradient)
+        tf.summary.scalar('grad_norm', norm)
+        self.train_step = self.optimizer.apply_gradients(
+          (c, v) for (c, (_,v)) in zip(clipped, grads))
 
 @attr.s
 class Rollout(object):
@@ -321,6 +327,7 @@ def arg_parser():
   parser.add_argument('--pg_weight', type=float, default=1.0)
   parser.add_argument('--v_weight', type=float, default=0.5)
   parser.add_argument('--entropy_weight', type=float, default=0.01)
+  parser.add_argument('--clip_gradient', type=float, default=1.0)
   return parser
 
 if __name__ == '__main__':
