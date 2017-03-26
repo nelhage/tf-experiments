@@ -18,6 +18,7 @@ import gym
 
 import tensorflow as tf
 import numpy as np
+import scipy.signal
 
 WIDTH  = 210
 HEIGHT = 160
@@ -126,32 +127,42 @@ class PingPongModel(object):
 
       self.train_step = tf.train.AdamOptimizer(FLAGS.eta).minimize(self.loss)
 
-@attr.s
-class Step(object):
-  this_frame = attr.ib()
-  prev_frame = attr.ib()
-  action     = attr.ib()
-  reward     = attr.ib()
-  vp         = attr.ib()
+def discount(x, gamma):
+    return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
-def build_rewards(steps):
-  rewards = np.zeros((len(steps),))
+@attr.s
+class Rollout(object):
+  frames    = attr.ib(default=attr.Factory(list))
+  actions   = attr.ib(default=attr.Factory(list))
+  rewards   = attr.ib(default=attr.Factory(list))
+  vp        = attr.ib(default=attr.Factory(list))
+
+  discounted = attr.ib(default=None)
+
+  def clear(self):
+    del self.frames[:]
+    del self.actions[:]
+    del self.rewards[:]
+    del self.vp[:]
+
+def build_rewards(rollout):
+  discounted = np.zeros((len(rollout.actions),))
   r = 0
-  for i in reversed(range(len(steps))):
-    if steps[i].reward != 0:
-      r = steps[i].reward
-    rewards[i] = r
+  for i,rw in reversed(list(enumerate(rollout.rewards))):
+    if rw != 0:
+      r = rw
+    discounted[i] = r
     r *= DISCOUNT
 
-  return rewards
+  rollout.discounted = discounted
+  return rollout.discounted
 
-def build_advantage(steps, reward):
-  vp = np.array([s.vp for s in steps])
-  return reward - vp
+def build_advantage(rollout):
+  return rollout.discounted - rollout.vp
 
-def build_actions(steps):
-  actions = np.zeros((len(steps), ACTIONS))
-  actions[np.arange(len(actions)), [s.action for s in steps]] = 1
+def build_actions(rollout):
+  actions = np.zeros((len(rollout.actions), ACTIONS))
+  actions[np.arange(len(actions)), rollout.actions] = 1
   return actions
 
 def process_frame(frame):
@@ -166,7 +177,9 @@ def main(_):
   this_frame = process_frame(env.reset())
   prev_frame = np.zeros_like(this_frame)
 
-  steps = []
+  rollout = Rollout(
+    frames=[prev_frame],
+  )
   reset_time = time.time()
   saver = tf.train.Saver(
     max_to_keep=5, keep_checkpoint_every_n_hours=1)
@@ -214,26 +227,21 @@ def main(_):
 
     next_frame, reward, done, info = env.step(2 + action)
 
-    steps.append(Step(prev_frame=prev_frame,
-                      this_frame=this_frame,
-                      action=action,
-                      reward=reward,
-                      vp=vp[0],
-    ))
-
     prev_frame = this_frame
     this_frame = process_frame(next_frame)
 
-    if reward != 0:
-      print("reward={0}".format(reward))
+    rollout.frames.append(this_frame)
+    rollout.actions.append(action)
+    rollout.rewards.append(reward)
+    rollout.vp.append(vp[0])
 
     if done:
       if FLAGS.train:
         train_start = time.time()
 
-        rewards = build_rewards(steps)
-        adv     = build_advantage(steps, rewards)
-        actions = build_actions(steps)
+        rewards = build_rewards(rollout)
+        adv     = build_advantage(rollout)
+        actions = build_actions(rollout)
 
         ops = {
           'pg_loss': model.pg_loss,
@@ -245,29 +253,30 @@ def main(_):
         out = session.run(
           ops,
           feed_dict = {
-            model.this_frame: [s.this_frame for s in steps],
-            model.prev_frame: [s.prev_frame for s in steps],
+            model.this_frame: rollout.frames[1:],
+            model.prev_frame: rollout.frames[:-1],
             model.actions:    actions,
             model.rewards:    rewards,
             model.adv:        adv,
           })
         train_end = time.time()
 
-        avgreward = 0.9 * avgreward + 0.1 * sum([s.reward for s in steps])
+        avgreward = 0.9 * avgreward + 0.1 * sum(rollout.rewards)
         print("done round={round} frames={frames} reward={reward} expreward={avgreward:.1f} pg_loss={pg_loss} v_loss={v_loss} actions={actions}".format(
-          frames = len(steps),
-          reward = sum([s.reward for s in steps]),
+          frames = len(rollout.actions),
+          reward = sum(rollout.rewards),
           avgreward = avgreward,
-          actions = collections.Counter([s.action for s in steps]),
+          actions = collections.Counter(rollout.actions),
           pg_loss = out['pg_loss'],
           v_loss = out['v_loss'],
           round = rounds,
         ))
         print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
-          train_start-reset_time, train_end-train_start, len(steps)/(train_start-reset_time)))
+          train_start-reset_time, train_end-train_start, len(rollout.actions)/(train_start-reset_time)))
 
-      del steps[:]
       prev_frame = np.zeros_like(this_frame)
+      rollout.clear()
+      rollout.frames.append(prev_frame)
 
       rounds += 1
       if FLAGS.checkpoint > 0 and rounds % FLAGS.checkpoint == 0:
