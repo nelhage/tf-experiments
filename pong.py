@@ -249,8 +249,12 @@ def build_rewards(rollout):
   rollout.discounted = discounted
   return rollout.discounted
 
-def build_advantage(rollout):
-  return rollout.discounted - rollout.vp
+def build_advantage(rollout, gamma=DISCOUNT, lambda_=1.0):
+  rewards = np.array(rollout.rewards)
+  vp_t = np.array(rollout.vp + [0])
+
+  delta_t = rewards + gamma * vp_t[1:] - vp_t[:-1]
+  return discount(delta_t, gamma*lambda_)
 
 def build_actions(rollout):
   actions = np.zeros((len(rollout.actions), ACTIONS))
