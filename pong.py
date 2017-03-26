@@ -126,7 +126,13 @@ class PingPongModel(object):
         FLAGS.v_weight * self.v_loss -
         FLAGS.entropy_weight * self.entropy)
 
-      self.train_step = tf.train.AdamOptimizer(FLAGS.eta).minimize(self.loss)
+      self.optimizer = tf.train.AdamOptimizer(FLAGS.eta)
+      grads = self.optimizer.compute_gradients(self.loss)
+      clipped, norm = tf.clip_by_global_norm(
+        [g for (g, v) in grads], 40.0)
+      tf.summary.scalar('grad_norm', norm)
+      self.train_step = self.optimizer.apply_gradients(
+        (c, v) for (c, (_,v)) in zip(clipped, grads))
 
 def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
