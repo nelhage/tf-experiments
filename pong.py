@@ -107,8 +107,9 @@ class PingPongModel(object):
   def add_train_ops(self):
     with tf.variable_scope('Train'):
       self.adv  = tf.placeholder(tf.float32, [None], name="Advantage")
+      tf.summary.histogram('advantage', self.adv)
       self.rewards = tf.placeholder(tf.float32, [None], name="Reward")
-      tf.summary.scalar('reward', tf.reduce_mean(self.rewards))
+      tf.summary.histogram('weighted_reward', self.rewards)
       self.actions = tf.placeholder(tf.float32, [None, ACTIONS], name="SampledActions")
 
       self.cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o)
@@ -190,14 +191,17 @@ def main(_):
   else:
     tf.global_variables_initializer().run()
 
-  if FLAGS.checkpoint:
+  if FLAGS.logdir:
     try:
       os.makedirs(os.path.dirname(FLAGS.logdir))
     except FileExistsError:
       pass
-
-  summary_op = tf.summary.merge_all()
-  summary_writer = tf.summary.FileWriter(FLAGS.logdir, session.graph)
+    summary_op = tf.summary.merge_all()
+    summary_writer = tf.summary.FileWriter(FLAGS.logdir, session.graph)
+  else:
+    summary_op = summary_writer = None
+  write_summaries = summary_writer and FLAGS.summary_interval
+  write_checkpoints = FLAGS.logdir and FLAGS.checkpoint
 
   rounds = 0
 
@@ -246,9 +250,10 @@ def main(_):
         ops = {
           'pg_loss': model.pg_loss,
           'v_loss': model.v_loss,
-          'summary' : summary_op,
           'train': model.train_step,
         }
+        if summary_op is not None:
+          ops['summary'] = summary_op
 
         out = session.run(
           ops,
@@ -271,17 +276,26 @@ def main(_):
           v_loss = out['v_loss'],
           round = rounds,
         ))
+        fps = len(rollout.actions)/(train_start-reset_time)
         print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
-          train_start-reset_time, train_end-train_start, len(rollout.actions)/(train_start-reset_time)))
+          train_start-reset_time, train_end-train_start, fps))
+
+      if write_summaries and rounds % FLAGS.summary_interval == 0:
+        summary = tf.Summary()
+        summary.value.add(tag='env/frames', simple_value=float(len(rollout.actions)))
+        summary.value.add(tag='env/fps', simple_value=fps)
+        summary.value.add(tag='env/reward', simple_value=sum(rollout.rewards))
+        summary_writer.add_summary(summary, rounds)
+        summary_writer.add_summary(out['summary'], rounds)
 
       prev_frame = np.zeros_like(this_frame)
       rollout.clear()
       rollout.frames.append(prev_frame)
 
       rounds += 1
-      if FLAGS.checkpoint > 0 and rounds % FLAGS.checkpoint == 0:
+      if write_checkpoints and rounds % FLAGS.checkpoint == 0:
         saver.save(session, os.path.join(FLAGS.logdir, 'pong'), global_step=rounds)
-        summary_writer.add_summary(out['summary'], rounds)
+
 
       env.reset()
       reset_time = time.time()
@@ -300,7 +314,9 @@ def arg_parser():
                       help='learning rate')
   parser.add_argument('--checkpoint', type=int, default=0,
                       help='checkpoint every N rounds')
-  parser.add_argument('--logdir', type=str, default='train/models',
+  parser.add_argument('--summary_interval', type=int, default=5,
+                      help='write summaries every N rounds')
+  parser.add_argument('--logdir', type=str, default=None,
                       help='log path')
   parser.add_argument('--load_model', type=str, default=None,
                       help='restore model')
