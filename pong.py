@@ -80,6 +80,7 @@ class PingPongModel(object):
       )
 
       self.activations = activations
+      tf.summary.image('activations', tf.reduce_mean(activations, axis=3, keep_dims=True))
 
     with tf.variable_scope('Hidden'):
       channels = int(functools.reduce(operator.mul, activations.get_shape()[1:]))
@@ -88,7 +89,6 @@ class PingPongModel(object):
       inp = tf.reshape(self.activations, (-1, channels))
 
       z_h = tf.matmul(inp, self.W_h) + self.B_h
-      tf.summary.histogram('z_h', z_h)
       a_h = tf.nn.relu(z_h)
 
     with tf.variable_scope('Output'):
@@ -101,6 +101,7 @@ class PingPongModel(object):
       self.B_v = self.bias_variable((1,))
 
     self.logits = self.z_o
+    tf.summary.histogram('logits', self.logits)
     self.act_probs = tf.nn.softmax(self.logits)
     self.vp = tf.reshape(tf.matmul(a_h, self.W_v) + self.B_v, (-1,))
 
@@ -117,6 +118,7 @@ class PingPongModel(object):
       tf.summary.scalar('pg_loss', self.pg_loss)
       self.v_loss = 0.5 * tf.reduce_mean(tf.square(self.vp - self.rewards))
       tf.summary.scalar('value_loss', self.v_loss)
+      tf.summary.histogram('value_err', (self.vp - self.rewards))
       self.entropy = -tf.reduce_mean(
         tf.reduce_sum(self.act_probs * tf.nn.log_softmax(self.logits), axis=1))
       tf.summary.scalar('entropy', self.entropy)
