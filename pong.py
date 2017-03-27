@@ -294,7 +294,7 @@ def arg_parser():
                       help='Train model')
   parser.add_argument('--no-train', action='store_false', dest='train',
                       help="Don't train")
-  parser.add_argument('--hidden', type=int, default=20,
+  parser.add_argument('--hidden', type=int, default=256,
                       help='hidden neurons')
   parser.add_argument('--eta', type=float, default=1e-4,
                       help='learning rate')
