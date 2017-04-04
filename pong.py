@@ -29,6 +29,13 @@ DISCOUNT = 0.99
 
 FLAGS = None
 
+def normalized_columns_initializer(std=1.0):
+    def _initializer(shape, dtype=None, partition_info=None):
+        out = np.random.randn(*shape).astype(np.float32)
+        out *= std / np.sqrt(np.square(out).sum(axis=0, keepdims=True))
+        return tf.constant(out)
+    return _initializer
+
 class PingPongModel(object):
   def __init__(self):
     with tf.variable_scope('Frames'):
@@ -86,9 +93,7 @@ class PingPongModel(object):
     self.logits = tf.contrib.layers.fully_connected(
       z_h,
       num_outputs = ACTIONS,
-      weights_initializer = tf.contrib.layers.variance_scaling_initializer(
-        mode='FAN_IN', uniform=False, factor=0.01,
-      ),
+      weights_initializer = normalized_columns_initializer(0.01),
       biases_initializer = tf.constant_initializer(0),
       trainable = True,
       scope = 'Actions',
