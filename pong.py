@@ -29,96 +29,88 @@ DISCOUNT = 0.99
 
 FLAGS = None
 
-def normalized_columns_initializer(std=1.0):
-    def _initializer(shape, dtype=None, partition_info=None):
-        out = np.random.randn(*shape).astype(np.float32)
-        out *= std / np.sqrt(np.square(out).sum(axis=0, keepdims=True))
-        return tf.constant(out)
-    return _initializer
-
 class PingPongModel(object):
+  @staticmethod
+  def weight_variable(shape, name=None):
+    initial = tf.truncated_normal(
+      shape, stddev=0.05)
+    return tf.Variable(initial, name)
+
+  @staticmethod
+  def bias_variable(shape, name=None):
+    initial = tf.constant(0.1, shape=shape)
+    return tf.Variable(initial, name)
+
+  @staticmethod
+  def max_pool_2x2(x):
+    return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
+                          strides=[1, 2, 2, 1], padding='SAME')
+
   def __init__(self):
-    with tf.variable_scope('Frames'):
+    with tf.name_scope('Frames'):
       self.prev_frame = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="ThisFrame")
       self.this_frame = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="PrevFrame")
 
     deltas = self.this_frame - self.prev_frame
     deltas = deltas[:,::2,::2]
 
-    frame = tf.reshape(deltas, (-1, WIDTH//2, HEIGHT//2, PLANES))
+    with tf.name_scope('Conv'):
+      frame = tf.reshape(deltas, (-1, WIDTH//2, HEIGHT//2, PLANES))
 
-    activations = tf.contrib.layers.conv2d(
-      frame,
-      num_outputs=16,
-      padding='SAME',
-      kernel_size=4,
-      trainable=True,
-      stride=2,
-      activation_fn=tf.nn.relu,
-      scope='Conv_1',
-    )
-    activations = tf.contrib.layers.max_pool2d(
-      activations,
-      kernel_size=2,
-    )
-    activations = tf.contrib.layers.conv2d(
-      activations,
-      num_outputs=16,
-      padding='SAME',
-      kernel_size=4,
-      trainable=True,
-      stride=2,
-      activation_fn=tf.nn.relu,
-      scope='Conv_2',
-    )
-    activations = tf.contrib.layers.max_pool2d(
-      activations,
-      kernel_size=2,
-    )
+      self.W_conv1 = self.weight_variable((4, 4, PLANES, 16), 'w_1')
+      self.B_conv1 = self.bias_variable((16,), 'b_1')
 
-    self.activations = activations
-    tf.summary.image('activations',
-                     tf.reduce_mean(activations, axis=3, keep_dims=True),
-                     max_outputs=10)
+      self.h_conv1 = tf.nn.relu(
+        tf.nn.conv2d(frame, self.W_conv1, strides=[1, 2, 2, 1], padding='SAME')
+        + self.B_conv1)
+      self.h_pool1 = self.max_pool_2x2(self.h_conv1)
+      tf.summary.histogram('conv1', self.h_conv1)
 
-    z_h = tf.contrib.layers.fully_connected(
-      tf.contrib.layers.flatten(activations),
-      num_outputs = FLAGS.hidden,
-      activation_fn = tf.nn.relu,
-      biases_initializer = tf.constant_initializer(0),
-      trainable = True,
-      scope='Hidden',
-    )
+      self.W_conv2 = self.weight_variable((4, 4, 16, 16), 'w_1')
+      self.B_conv2 = self.bias_variable((16,), 'b_2')
 
-    self.logits = tf.contrib.layers.fully_connected(
-      z_h,
-      num_outputs = ACTIONS,
-      weights_initializer = normalized_columns_initializer(0.01),
-      biases_initializer = tf.constant_initializer(0),
-      trainable = True,
-      scope = 'Actions',
-    )
+      self.h_conv2 = tf.nn.relu(
+        tf.nn.conv2d(self.h_conv1, self.W_conv2, strides=[1, 2, 2, 1], padding='SAME')
+        + self.B_conv2)
+      self.h_pool2 = self.max_pool_2x2(self.h_conv2)
+      tf.summary.histogram('conv2', self.h_conv2)
 
-    self.vp = tf.tanh(tf.reshape(tf.contrib.layers.fully_connected(
-      z_h,
-      num_outputs = 1,
-      biases_initializer = tf.constant_initializer(-1),
-      trainable = True,
-      scope = 'Values',
-    ), (-1,)))
+    with tf.name_scope('Hidden'):
+      channels = int(functools.reduce(operator.mul, self.h_pool2.get_shape()[1:]))
+      self.W_h = self.weight_variable((channels, FLAGS.hidden), 'w')
+      self.B_h = self.bias_variable((FLAGS.hidden, ), 'b')
+      inp = tf.reshape(self.h_pool2, (-1, channels))
 
+      z_h = tf.matmul(inp, self.W_h) + self.B_h
+      tf.summary.histogram('z_h', z_h)
+      a_h = tf.nn.relu(z_h)
+
+    with tf.name_scope('Output'):
+      self.W_o = self.weight_variable((FLAGS.hidden, ACTIONS), 'w_l')
+      self.B_o = self.bias_variable((ACTIONS, ), 'b_l')
+
+      self.z_o = tf.matmul(a_h, self.W_o) + self.B_o
+
+      self.W_v = self.weight_variable((FLAGS.hidden, 1), 'w_v')
+      self.B_v = self.bias_variable((1,), 'b_v')
+
+    self.logits = self.z_o
     tf.summary.histogram('logits', self.logits)
     self.act_probs = tf.nn.softmax(self.logits)
+    self.vp = tf.reshape(tf.tanh(tf.matmul(a_h, self.W_v) + self.B_v), (-1,))
+
+    for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
+      tf.summary.scalar('norm/' + var.name, tf.norm(var))
 
   def add_train_ops(self):
-    with tf.variable_scope('Train'):
+    with tf.name_scope('Train'):
       self.adv  = tf.placeholder(tf.float32, [None], name="Advantage")
       tf.summary.histogram('advantage', self.adv)
       self.rewards = tf.placeholder(tf.float32, [None], name="Reward")
       tf.summary.histogram('weighted_reward', self.rewards)
       self.actions = tf.placeholder(tf.float32, [None, ACTIONS], name="SampledActions")
 
-      self.cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.logits)
+      self.cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o)
       self.pg_loss = tf.reduce_mean(self.adv * self.cross_entropy)
       tf.summary.scalar('pg_loss', self.pg_loss)
       self.v_loss = 0.5 * tf.reduce_mean(tf.square(self.vp - self.rewards))
@@ -133,18 +125,7 @@ class PingPongModel(object):
         FLAGS.v_weight * self.v_loss -
         FLAGS.entropy_weight * self.entropy)
 
-      self.optimizer = tf.train.AdamOptimizer(FLAGS.eta)
-      grads = self.optimizer.compute_gradients(self.loss)
-      clipped, norm = tf.clip_by_global_norm(
-        [g for (g, v) in grads], 40.0)
-      tf.summary.scalar('grad_norm', norm)
-      self.train_step = self.optimizer.apply_gradients(
-        (c, v) for (c, (_,v)) in zip(clipped, grads))
-    for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
-      tf.summary.scalar('norm/' + var.name, tf.norm(var))
-
-def discount(x, gamma):
-    return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
+      self.train_step = tf.train.AdamOptimizer(FLAGS.eta).minimize(self.loss)
 
 @attr.s
 class Rollout(object):
