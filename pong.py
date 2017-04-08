@@ -97,15 +97,17 @@ class PingPongModel(object):
       biases_initializer = tf.constant_initializer(0),
       trainable = True,
       scope = 'Actions',
+      activation_fn=None,
     )
 
-    self.vp = tf.tanh(tf.reshape(tf.contrib.layers.fully_connected(
+    self.vp = tf.reshape(tf.contrib.layers.fully_connected(
       z_h,
       num_outputs = 1,
       biases_initializer = tf.constant_initializer(-1),
       trainable = True,
       scope = 'Values',
-    ), (-1,)))
+      activation_fn=tf.tanh,
+    ), (-1,))
 
     tf.summary.histogram('logits', self.logits)
     self.act_probs = tf.nn.softmax(self.logits)
