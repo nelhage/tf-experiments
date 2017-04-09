@@ -155,12 +155,15 @@ class Rollout(object):
   vp        = attr.ib(default=attr.Factory(list))
 
   discounted = attr.ib(default=None)
+  start_time = attr.ib(default=None)
+  end_time   = attr.ib(default=None)
 
   def clear(self):
     del self.frames[:]
     del self.actions[:]
     del self.rewards[:]
     del self.vp[:]
+    self.start_time = time.time()
 
 def build_rewards(rollout):
   discounted = np.zeros((len(rollout.actions),))
@@ -192,6 +195,7 @@ def generate_rollouts(session, model):
 
   rollout = Rollout(
     frames=[prev_frame],
+    start_time=time.time(),
   )
   while True:
     if FLAGS.render:
@@ -223,6 +227,7 @@ def generate_rollouts(session, model):
     rollout.vp.append(vp[0])
 
     if done:
+      rollout.end_time = time.time()
       yield rollout
 
       prev_frame = np.zeros_like(this_frame)
@@ -261,7 +266,6 @@ def main(_):
 
   avgreward = 0
 
-  reset_time = time.time()
   for rollout in generate_rollouts(session, model):
     if FLAGS.train:
       train_start = time.time()
@@ -299,21 +303,21 @@ def main(_):
         v_loss = out['v_loss'],
         round = rounds,
       ))
-      fps = len(rollout.actions)/(train_start-reset_time)
-      print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
-        train_start-reset_time, train_end-train_start, fps))
+
+      train_fps = len(rollout.actions)/(train_end-train_start)
+      play_fps = len(rollout.actions)/(rollout.end_time-rollout.start_time)
 
       if write_summaries and rounds % FLAGS.summary_interval == 0:
         summary = tf.Summary()
         summary.value.add(tag='env/frames', simple_value=float(len(rollout.actions)))
-        summary.value.add(tag='env/fps', simple_value=fps)
+        summary.value.add(tag='env/fps', simple_value=play_fps)
+        summary.value.add(tag='train/fps', simple_value=train_fps)
         summary.value.add(tag='env/reward', simple_value=sum(rollout.rewards))
         summary_writer.add_summary(summary, rounds)
         summary_writer.add_summary(out['summary'], rounds)
       if write_checkpoints and rounds % FLAGS.checkpoint == 0:
         saver.save(session, os.path.join(FLAGS.logdir, 'pong'), global_step=rounds)
 
-    reset_time = time.time()
     rounds += 1
 
 def arg_parser():
