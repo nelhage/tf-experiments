@@ -7,7 +7,7 @@ services:
 
 script:
   - docker login -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD"
-  - travis.sh
+  - sh travis.sh
 
 env:
   global:
