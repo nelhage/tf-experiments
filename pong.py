@@ -49,6 +49,7 @@ class PingPongModel(object):
 
     activations = tf.contrib.layers.conv2d(
       frame,
+      biases_initializer = tf.constant_initializer(0.1),
       num_outputs=16,
       padding='SAME',
       kernel_size=4,
@@ -63,6 +64,7 @@ class PingPongModel(object):
     )
     activations = tf.contrib.layers.conv2d(
       activations,
+      biases_initializer = tf.constant_initializer(0.1),
       num_outputs=16,
       padding='SAME',
       kernel_size=4,
