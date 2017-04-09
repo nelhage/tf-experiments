@@ -79,9 +79,6 @@ class PingPongModel(object):
     )
 
     self.activations = activations
-    tf.summary.image('activations',
-                     tf.reduce_mean(activations, axis=3, keep_dims=True),
-                     max_outputs=10)
 
     z_h = tf.contrib.layers.fully_connected(
       tf.contrib.layers.flatten(activations),
