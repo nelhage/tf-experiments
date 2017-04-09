@@ -188,44 +188,14 @@ def build_actions(rollout):
 def process_frame(frame):
   return np.expand_dims(np.mean(frame, 2), -1)
 
-def main(_):
+def generate_rollouts(session, model):
   env = gym.make('Pong-v0')
-  model = PingPongModel()
-  if FLAGS.train:
-    model.add_train_ops()
-
   this_frame = process_frame(env.reset())
   prev_frame = np.zeros_like(this_frame)
 
   rollout = Rollout(
     frames=[prev_frame],
   )
-  reset_time = time.time()
-  saver = tf.train.Saver(
-    max_to_keep=5, keep_checkpoint_every_n_hours=1)
-
-  session = tf.InteractiveSession()
-  if FLAGS.load_model:
-    saver.restore(session, FLAGS.load_model)
-  else:
-    tf.global_variables_initializer().run()
-
-  if FLAGS.logdir:
-    try:
-      os.makedirs(os.path.dirname(FLAGS.logdir))
-    except FileExistsError:
-      pass
-    summary_op = tf.summary.merge_all()
-    summary_writer = tf.summary.FileWriter(FLAGS.logdir, session.graph)
-  else:
-    summary_op = summary_writer = None
-  write_summaries = summary_writer and FLAGS.summary_interval
-  write_checkpoints = FLAGS.logdir and FLAGS.checkpoint
-
-  rounds = 0
-
-  avgreward = 0
-
   while True:
     if FLAGS.render:
       env.render()
@@ -256,45 +226,85 @@ def main(_):
     rollout.vp.append(vp[0])
 
     if done:
-      if FLAGS.train:
-        train_start = time.time()
+      yield rollout
 
-        rewards = build_rewards(rollout)
-        adv     = build_advantage(rollout)
-        actions = build_actions(rollout)
+      prev_frame = np.zeros_like(this_frame)
+      rollout.clear()
+      rollout.frames.append(prev_frame)
 
-        ops = {
-          'pg_loss': model.pg_loss,
-          'v_loss': model.v_loss,
-          'train': model.train_step,
-        }
-        if summary_op is not None:
-          ops['summary'] = summary_op
+      env.reset()
 
-        out = session.run(
-          ops,
-          feed_dict = {
-            model.this_frame: rollout.frames[1:],
-            model.prev_frame: rollout.frames[:-1],
-            model.actions:    actions,
-            model.rewards:    rewards,
-            model.adv:        adv,
-          })
-        train_end = time.time()
+def main(_):
+  model = PingPongModel()
+  if FLAGS.train:
+    model.add_train_ops()
 
-        avgreward = 0.9 * avgreward + 0.1 * sum(rollout.rewards)
-        print("done round={round} frames={frames} reward={reward} expreward={avgreward:.1f} pg_loss={pg_loss} v_loss={v_loss} actions={actions}".format(
-          frames = len(rollout.actions),
-          reward = sum(rollout.rewards),
-          avgreward = avgreward,
-          actions = collections.Counter(rollout.actions),
-          pg_loss = out['pg_loss'],
-          v_loss = out['v_loss'],
-          round = rounds,
-        ))
-        fps = len(rollout.actions)/(train_start-reset_time)
-        print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
-          train_start-reset_time, train_end-train_start, fps))
+  saver = tf.train.Saver(
+    max_to_keep=5, keep_checkpoint_every_n_hours=1)
+
+  session = tf.InteractiveSession()
+  if FLAGS.load_model:
+    saver.restore(session, FLAGS.load_model)
+  else:
+    tf.global_variables_initializer().run()
+
+  if FLAGS.logdir:
+    try:
+      os.makedirs(os.path.dirname(FLAGS.logdir))
+    except FileExistsError:
+      pass
+    summary_op = tf.summary.merge_all()
+    summary_writer = tf.summary.FileWriter(FLAGS.logdir, session.graph)
+  else:
+    summary_op = summary_writer = None
+  write_summaries = summary_writer and FLAGS.summary_interval
+  write_checkpoints = FLAGS.logdir and FLAGS.checkpoint
+
+  rounds = 0
+
+  avgreward = 0
+
+  reset_time = time.time()
+  for rollout in generate_rollouts(session, model):
+    if FLAGS.train:
+      train_start = time.time()
+
+      rewards = build_rewards(rollout)
+      adv     = build_advantage(rollout)
+      actions = build_actions(rollout)
+
+      ops = {
+        'pg_loss': model.pg_loss,
+        'v_loss': model.v_loss,
+        'train': model.train_step,
+      }
+      if summary_op is not None:
+        ops['summary'] = summary_op
+
+      out = session.run(
+        ops,
+        feed_dict = {
+          model.this_frame: rollout.frames[1:],
+          model.prev_frame: rollout.frames[:-1],
+          model.actions:    actions,
+          model.rewards:    rewards,
+          model.adv:        adv,
+        })
+      train_end = time.time()
+
+      avgreward = 0.9 * avgreward + 0.1 * sum(rollout.rewards)
+      print("done round={round} frames={frames} reward={reward} expreward={avgreward:.1f} pg_loss={pg_loss} v_loss={v_loss} actions={actions}".format(
+        frames = len(rollout.actions),
+        reward = sum(rollout.rewards),
+        avgreward = avgreward,
+        actions = collections.Counter(rollout.actions),
+        pg_loss = out['pg_loss'],
+        v_loss = out['v_loss'],
+        round = rounds,
+      ))
+      fps = len(rollout.actions)/(train_start-reset_time)
+      print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
+        train_start-reset_time, train_end-train_start, fps))
 
       if write_summaries and rounds % FLAGS.summary_interval == 0:
         summary = tf.Summary()
@@ -303,18 +313,11 @@ def main(_):
         summary.value.add(tag='env/reward', simple_value=sum(rollout.rewards))
         summary_writer.add_summary(summary, rounds)
         summary_writer.add_summary(out['summary'], rounds)
-
-      prev_frame = np.zeros_like(this_frame)
-      rollout.clear()
-      rollout.frames.append(prev_frame)
-
-      rounds += 1
       if write_checkpoints and rounds % FLAGS.checkpoint == 0:
         saver.save(session, os.path.join(FLAGS.logdir, 'pong'), global_step=rounds)
 
-
-      env.reset()
-      reset_time = time.time()
+    reset_time = time.time()
+    rounds += 1
 
 def arg_parser():
   parser = argparse.ArgumentParser()
