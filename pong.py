@@ -20,6 +20,8 @@ import tensorflow as tf
 import numpy as np
 import scipy.signal
 
+import cluster
+
 WIDTH  = 210
 HEIGHT = 160
 PLANES = 1
@@ -108,11 +110,14 @@ class PingPongModel(object):
       activation_fn=tf.tanh,
     ), (-1,))
 
-    tf.summary.histogram('logits', self.logits)
     self.act_probs = tf.nn.softmax(self.logits)
+    self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                      tf.get_variable_scope().name)
 
-  def add_train_ops(self):
+  def add_train_ops(self, apply_to_vars=None):
     with tf.variable_scope('Train'):
+      tf.summary.histogram('logits', self.logits)
+
       self.adv  = tf.placeholder(tf.float32, [None], name="Advantage")
       tf.summary.histogram('advantage', self.adv)
       self.rewards = tf.placeholder(tf.float32, [None], name="Reward")
@@ -135,13 +140,16 @@ class PingPongModel(object):
         FLAGS.entropy_weight * self.entropy)
 
       self.optimizer = tf.train.AdamOptimizer(FLAGS.eta)
-      grads = self.optimizer.compute_gradients(self.loss)
+      grads = self.optimizer.compute_gradients(self.loss, self.var_list)
       clipped, norm = tf.clip_by_global_norm(
         [g for (g, v) in grads], 40.0)
       tf.summary.scalar('grad_norm', norm)
-      self.train_step = self.optimizer.apply_gradients(
-        (c, v) for (c, (_,v)) in zip(clipped, grads))
-    for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
+      if apply_to_vars is None:
+        apply_to_vars = self.var_list
+
+      self.train_step = self.optimizer.apply_gradients(zip(clipped, apply_to_vars))
+
+    for var in self.var_list:
       tf.summary.scalar('norm/' + var.name, tf.norm(var))
 
 def discount(x, gamma):
@@ -237,15 +245,28 @@ def generate_rollouts(session, model):
       env.reset()
 
 class Trainer(object):
-  def __init__(self, model):
-    self.model = model
-    self.model.add_train_ops()
+  def __init__(self):
+    device = cluster.worker_device(FLAGS.task)
 
-    self.global_step = tf.get_variable("global_step", [], tf.int32,
-                                       initializer=tf.constant_initializer(0, dtype=tf.int32),
-                                       trainable=False)
-    self.summary_op = tf.summary.merge_all()
-    self.inc_step = self.global_step.assign_add(1)
+    with tf.device(tf.train.replica_device_setter(1, worker_device=device)):
+      with tf.variable_scope('global'):
+        self.global_model = PingPongModel()
+        self.global_step = tf.get_variable("global_step", [], tf.int32,
+                                           initializer=tf.constant_initializer(0, dtype=tf.int32),
+                                           trainable=False)
+
+    with tf.device(device):
+      with tf.variable_scope('local'):
+        self.model = PingPongModel()
+        self.model.add_train_ops(apply_to_vars=self.global_model.var_list)
+
+        self.summary_op = tf.summary.merge_all()
+        self.inc_step = self.global_step.assign_add(1)
+
+        self.sync = tf.group(*[v1.assign(v2) for v1, v2 in
+                               zip(self.model.var_list,
+                                   self.global_model.var_list)])
+
     self.avgreward = 0
 
   def start(self, summary_writer):
@@ -266,6 +287,7 @@ class Trainer(object):
       'summary': self.summary_op,
     }
 
+    session.run(self.sync)
     out = session.run(
       ops,
       feed_dict = {
@@ -299,26 +321,45 @@ class Trainer(object):
     self.summary_writer.add_summary(summary, out['step'])
     self.summary_writer.add_summary(out['summary'], out['step'])
 
-def main(_):
-  model = PingPongModel()
+def run_ps():
+  cluster_def = cluster.cluster_def(FLAGS.workers)
+  server = tf.train.Server(cluster_def, job_name="ps", task_index=0,
+                           config=tf.ConfigProto(device_filters=[cluster.ps_device()]))
+  server.join()
 
-  if FLAGS.train:
-    trainer = Trainer(model)
-  else:
-    trainer = None
+def main(_):
+  if FLAGS.ps:
+    return run_ps()
+
+  cluster_def = cluster.cluster_def(FLAGS.workers)
+  server = tf.train.Server(cluster_def, job_name="worker", task_index=FLAGS.task)
+
+  trainer = Trainer()
+
+  variables_to_save = [v for v in tf.global_variables() if not v.name.startswith("local")]
+  saver = tf.train.Saver(variables_to_save)
+  summary_writer = tf.summary.FileWriter(
+    os.path.join(FLAGS.logdir, "worker-{}".format(FLAGS.task)))
 
   sv = tf.train.Supervisor(logdir=FLAGS.logdir,
-                           global_step=trainer.global_step if trainer else None,
+                           global_step=trainer.global_step,
+                           ready_op=tf.report_uninitialized_variables(variables_to_save),
                            summary_op=None,
-                           save_model_secs=300)
+                           summary_writer=summary_writer,
+                           saver=saver,
+                           save_model_secs=300,
+                           is_chief=(FLAGS.task==0))
 
-  with sv.managed_session() as sess:
-    if trainer:
-      trainer.start(sv.summary_writer)
+  config = tf.ConfigProto(device_filters=[
+    cluster.ps_device(),
+    cluster.worker_device(FLAGS.task)])
 
-    for rollout in generate_rollouts(sess, model):
-      if trainer:
-        trainer.process_rollout(sess, rollout)
+  with sv.managed_session(server.target, config) as sess:
+    sess.run(trainer.sync)
+    trainer.start(summary_writer)
+
+    for rollout in generate_rollouts(sess, trainer.model):
+      trainer.process_rollout(sess, rollout)
 
       if sv.should_stop():
         break
@@ -327,22 +368,14 @@ def arg_parser():
   parser = argparse.ArgumentParser()
   parser.add_argument('--render', default=False, action='store_true',
                       help='render simulation')
-  parser.add_argument('--train', default=True, action='store_true',
-                      help='Train model')
-  parser.add_argument('--no-train', action='store_false', dest='train',
-                      help="Don't train")
   parser.add_argument('--hidden', type=int, default=256,
                       help='hidden neurons')
   parser.add_argument('--eta', type=float, default=1e-4,
                       help='learning rate')
-  parser.add_argument('--checkpoint', type=int, default=0,
-                      help='checkpoint every N rounds')
   parser.add_argument('--summary_interval', type=int, default=5,
                       help='write summaries every N rounds')
   parser.add_argument('--logdir', type=str, default=None,
                       help='log path')
-  parser.add_argument('--load_model', type=str, default=None,
-                      help='restore model')
 
   parser.add_argument('--debug', action='store_true',
                       help='debug spew')
@@ -350,6 +383,18 @@ def arg_parser():
   parser.add_argument('--pg_weight', type=float, default=1.0)
   parser.add_argument('--v_weight', type=float, default=0.5)
   parser.add_argument('--entropy_weight', type=float, default=0.01)
+
+  parser.add_argument('--ps', action='store_true', default=False,
+                      help='Run the parameter server')
+  parser.add_argument('--workers',
+                      type=int,
+                      default=None,
+                      help='Total worker count')
+  parser.add_argument('--task',
+                      type=int,
+                      default=0,
+                      help='Task ID')
+
   return parser
 
 if __name__ == '__main__':
