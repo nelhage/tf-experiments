@@ -241,7 +241,8 @@ def generate_rollouts(session, model):
         start_time=time.time(),
       )
 
-      env.reset()
+      if done:
+        env.reset()
 
 class Trainer(object):
   def __init__(self):
@@ -266,6 +267,7 @@ class Trainer(object):
                                zip(self.model.var_list,
                                    self.global_model.var_list)])
 
+    self.runreward = 0
     self.avgreward = 0
 
   def start(self, summary_writer):
@@ -273,6 +275,11 @@ class Trainer(object):
 
   def process_rollout(self, session, rollout):
     train_start = time.time()
+
+    self.runreward += sum(rollout.rewards)
+    if rollout.terminal:
+      self.avgreward = 0.9 * self.avgreward + 0.1 * self.runreward
+      self.runreward = 0
 
     if not rollout.terminal and rollout.rewards[-1] == 0:
       rollout.rewards[-1] = rollout.vp[-1]
@@ -301,7 +308,6 @@ class Trainer(object):
       })
     train_end = time.time()
 
-    self.avgreward = 0.9 * self.avgreward + 0.1 * sum(rollout.rewards)
     print("done round={step} frames={frames} reward={reward} expreward={avgreward:.1f} pg_loss={pg_loss} v_loss={v_loss} actions={actions}".format(
       step = out['step'],
       frames = len(rollout.actions),
