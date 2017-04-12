@@ -3,3 +3,4 @@ gym[atari]
 attrs
 scipy
 https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.2.0-cp35-none-linux_x86_64.whl
+gcloud

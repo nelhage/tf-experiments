@@ -1,0 +1,6 @@
+#!/bin/bash
+image="$1"
+sha=${image%:*}
+gcloud auth activate-service-account "--key-file=$GOOGLE_APPLICATION_CREDENTIALS"
+now=$(date +"%Y-%m-%dT%H:%M:%S")
+gsutil cp -r /data/ gs://nelhage-ml/pong/$now/ver=$sha/
