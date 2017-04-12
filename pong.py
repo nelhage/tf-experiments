@@ -165,13 +165,7 @@ class Rollout(object):
   discounted = attr.ib(default=None)
   start_time = attr.ib(default=None)
   end_time   = attr.ib(default=None)
-
-  def clear(self):
-    del self.frames[:]
-    del self.actions[:]
-    del self.rewards[:]
-    del self.vp[:]
-    self.start_time = time.time()
+  terminal   = attr.ib(default=False)
 
 def build_rewards(rollout):
   discounted = np.zeros((len(rollout.actions),))
@@ -195,6 +189,8 @@ def build_actions(rollout):
 
 def process_frame(frame):
   return np.expand_dims(np.mean(frame, 2), -1)
+
+MAX_ROLLOUT = 100
 
 def generate_rollouts(session, model):
   env = gym.make('Pong-v0')
@@ -234,13 +230,16 @@ def generate_rollouts(session, model):
     rollout.rewards.append(reward)
     rollout.vp.append(vp[0])
 
-    if done:
+    if done or len(rollout.frames) >= MAX_ROLLOUT:
+      rollout.terminal = done
       rollout.end_time = time.time()
       yield rollout
 
       prev_frame = np.zeros_like(this_frame)
-      rollout.clear()
-      rollout.frames.append(prev_frame)
+      rollout = Rollout(
+        frames=[prev_frame],
+        start_time=time.time(),
+      )
 
       env.reset()
 
@@ -261,7 +260,7 @@ class Trainer(object):
         self.model.add_train_ops(apply_to_vars=self.global_model.var_list)
 
         self.summary_op = tf.summary.merge_all()
-        self.inc_step = self.global_step.assign_add(1)
+        self.inc_step = self.global_step.assign_add(tf.shape(self.model.prev_frame)[0])
 
         self.sync = tf.group(*[v1.assign(v2) for v1, v2 in
                                zip(self.model.var_list,
@@ -274,6 +273,9 @@ class Trainer(object):
 
   def process_rollout(self, session, rollout):
     train_start = time.time()
+
+    if not rollout.terminal and rollout.rewards[-1] == 0:
+      rollout.rewards[-1] = rollout.vp[-1]
 
     rewards = build_rewards(rollout)
     adv     = build_advantage(rollout)
