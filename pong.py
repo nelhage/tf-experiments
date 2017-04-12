@@ -142,7 +142,7 @@ class PingPongModel(object):
       self.optimizer = tf.train.AdamOptimizer(FLAGS.eta)
       grads = self.optimizer.compute_gradients(self.loss, self.var_list)
       clipped, norm = tf.clip_by_global_norm(
-        [g for (g, v) in grads], 40.0)
+        [g for (g, v) in grads], FLAGS.clip_gradient)
       tf.summary.scalar('grad_norm', norm)
       if apply_to_vars is None:
         apply_to_vars = self.var_list
@@ -385,6 +385,7 @@ def arg_parser():
   parser.add_argument('--pg_weight', type=float, default=1.0)
   parser.add_argument('--v_weight', type=float, default=0.5)
   parser.add_argument('--entropy_weight', type=float, default=0.01)
+  parser.add_argument('--clip_gradient', type=float, default=1.0)
 
   parser.add_argument('--ps', action='store_true', default=False,
                       help='Run the parameter server')
