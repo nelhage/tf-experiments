@@ -47,6 +47,7 @@ class PingPongModel(object):
                           strides=[1, 2, 2, 1], padding='SAME')
 
   def __init__(self):
+    self.global_step = tf.Variable(1, name='global_step', trainable=False)
     with tf.name_scope('Frames'):
       self.prev_frame = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="ThisFrame")
       self.this_frame = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="PrevFrame")
@@ -125,7 +126,8 @@ class PingPongModel(object):
         FLAGS.v_weight * self.v_loss -
         FLAGS.entropy_weight * self.entropy)
 
-      self.train_step = tf.train.AdamOptimizer(FLAGS.eta).minimize(self.loss)
+      with tf.control_dependencies([self.global_step.assign_add(1)]):
+        self.train_step = tf.train.AdamOptimizer(FLAGS.eta).minimize(self.loss)
 
 @attr.s
 class Rollout(object):
@@ -199,16 +201,14 @@ def main(_):
   write_summaries = summary_writer and FLAGS.summary_interval
   write_checkpoints = FLAGS.logdir and FLAGS.checkpoint
 
-  rounds = 0
-
   avgreward = 0
 
   while True:
     if FLAGS.render:
       env.render()
 
-    act_probs, vp = session.run(
-      [model.act_probs, model.vp],
+    act_probs, vp, global_step = session.run(
+      [model.act_probs, model.vp, model.global_step],
       feed_dict=
       {
         model.this_frame: np.expand_dims(this_frame, 0),
@@ -260,34 +260,33 @@ def main(_):
         train_end = time.time()
 
         avgreward = 0.9 * avgreward + 0.1 * sum(rollout.rewards)
-        print("done round={round} frames={frames} reward={reward} expreward={avgreward:.1f} pg_loss={pg_loss} v_loss={v_loss} actions={actions}".format(
+        print("done round={global_step} frames={frames} reward={reward} expreward={avgreward:.1f} pg_loss={pg_loss} v_loss={v_loss} actions={actions}".format(
           frames = len(rollout.actions),
           reward = sum(rollout.rewards),
           avgreward = avgreward,
           actions = collections.Counter(rollout.actions),
           pg_loss = out['pg_loss'],
           v_loss = out['v_loss'],
-          round = rounds,
+          global_step = global_step,
         ))
         fps = len(rollout.actions)/(train_start-reset_time)
         print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
           train_start-reset_time, train_end-train_start, fps))
 
-      if write_summaries and rounds % FLAGS.summary_interval == 0:
+      if write_summaries and global_step % FLAGS.summary_interval == 0:
         summary = tf.Summary()
         summary.value.add(tag='env/frames', simple_value=float(len(rollout.actions)))
         summary.value.add(tag='env/fps', simple_value=fps)
         summary.value.add(tag='env/reward', simple_value=sum(rollout.rewards))
-        summary_writer.add_summary(summary, rounds)
-        summary_writer.add_summary(out['summary'], rounds)
+        summary_writer.add_summary(summary, global_step)
+        summary_writer.add_summary(out['summary'], global_step)
 
       prev_frame = np.zeros_like(this_frame)
       rollout.clear()
       rollout.frames.append(prev_frame)
 
-      rounds += 1
-      if write_checkpoints and rounds % FLAGS.checkpoint == 0:
-        saver.save(session, os.path.join(FLAGS.logdir, 'pong'), global_step=rounds)
+      if write_checkpoints and global_step % FLAGS.checkpoint == 0:
+        saver.save(session, os.path.join(FLAGS.logdir, 'pong'), global_step=global_step)
 
 
       env.reset()
