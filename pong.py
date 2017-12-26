@@ -238,7 +238,7 @@ def main(_):
     rollout.rewards.append(reward)
     rollout.vp.append(vp[0])
 
-    if done:
+    if done or reward != 0:
       if FLAGS.train:
         train_start = time.time()
 
