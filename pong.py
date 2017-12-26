@@ -201,7 +201,7 @@ def main(_):
   write_summaries = summary_writer and FLAGS.summary_interval
   write_checkpoints = FLAGS.logdir and FLAGS.checkpoint
 
-  avgreward = 0
+  avgreward = None
 
   while True:
     if FLAGS.render:
@@ -259,6 +259,8 @@ def main(_):
           })
         train_end = time.time()
 
+        if avgreward is None:
+          avgreward = sum(rollout.rewards)
         avgreward = 0.9 * avgreward + 0.1 * sum(rollout.rewards)
         print("done round={global_step} frames={frames} reward={reward} expreward={avgreward:.1f} pg_loss={pg_loss} v_loss={v_loss} actions={actions}".format(
           frames = len(rollout.actions),
