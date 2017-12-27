@@ -6,6 +6,11 @@ RUN virtualenv --python=python3 /venv
 RUN apt-get update && apt-get -y install cmake build-essential
 RUN apt-get update && apt-get -y install zlib1g-dev
 
+ADD https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-183.0.0-linux-x86_64.tar.gz /gcloud.tgz
+RUN tar -C /usr/local -xzf /gcloud.tgz
+RUN mkdir -p /usr/local/bin
+RUN ln -nsf /usr/local/google-cloud-sdk/bin/* /usr/local/bin/
+
 RUN mkdir /src
 ADD requirements.txt /src/requirements.txt
 
