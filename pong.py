@@ -77,14 +77,15 @@ class PingPongModel(object):
       tf.summary.histogram('conv2', self.h_conv2)
 
     with tf.name_scope('Hidden'):
-      channels = int(functools.reduce(operator.mul, self.h_pool2.get_shape()[1:]))
-      self.W_h = self.weight_variable((channels, FLAGS.hidden), 'w')
-      self.B_h = self.bias_variable((FLAGS.hidden, ), 'b')
-      inp = tf.reshape(self.h_pool2, (-1, channels))
-
-      z_h = tf.matmul(inp, self.W_h) + self.B_h
-      tf.summary.histogram('z_h', z_h)
-      a_h = tf.nn.relu(z_h)
+      a_h = tf.contrib.layers.fully_connected(
+        tf.contrib.layers.flatten(self.h_pool2),
+        num_outputs = FLAGS.hidden,
+        activation_fn = tf.nn.relu,
+        biases_initializer = tf.constant_initializer(0.1),
+        trainable = True,
+        scope='Hidden',
+      )
+      tf.summary.histogram('a_h', a_h)
 
     with tf.name_scope('Output'):
       self.W_o = self.weight_variable((FLAGS.hidden, ACTIONS), 'w_l')
