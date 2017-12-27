@@ -239,7 +239,7 @@ def main(_):
     rollout.rewards.append(reward)
     rollout.vp.append(vp[0])
 
-    if done or reward != 0:
+    if done or (FLAGS.train_on_reward and reward != 0):
       if FLAGS.train:
         train_start = time.time()
 
@@ -298,7 +298,8 @@ def main(_):
         saver.save(session, os.path.join(FLAGS.logdir, 'pong'), global_step=global_step)
 
 
-      env.reset()
+      if done:
+        env.reset()
       reset_time = time.time()
 
 def arg_parser():
@@ -324,6 +325,9 @@ def arg_parser():
 
   parser.add_argument('--debug', action='store_true',
                       help='debug spew')
+
+  parser.add_argument('--train_on_reward', default=False, action='store_true',
+                      help='Train model on every reward')
 
   parser.add_argument('--pg_weight', type=float, default=1.0)
   parser.add_argument('--v_weight', type=float, default=0.5)
