@@ -4,5 +4,4 @@ version="${image#*:}"
 
 gcloud auth activate-service-account "--key-file=$GOOGLE_APPLICATION_CREDENTIALS"
 
-gsutil -o 'GSUtil:parallel_composite_upload_threshold=100M' \
-       cp -r -m /data/ "gs://nelhage-ml/pong/$(date +%s)-$version/"
+gsutil -m cp -r /data/ "gs://nelhage-ml/pong/$(date +%s)-$version/"
