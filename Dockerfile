@@ -1,6 +1,6 @@
 FROM ubuntu:16.04
 
-RUN apt-get update && apt-get -y install python3 python3-pip virtualenv
+RUN apt-get update && apt-get -y install python python3 python3-pip virtualenv
 RUN virtualenv --python=python3 /venv
 
 RUN apt-get update && apt-get -y install cmake build-essential
