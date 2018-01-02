@@ -239,7 +239,9 @@ def main(_):
     rollout.rewards.append(reward)
     rollout.vp.append(vp[0])
 
-    if done or (FLAGS.train_on_reward and reward != 0):
+    if (done or
+        (FLAGS.train_on_reward and reward != 0) or
+        (FLAGS.train_frames and len(rollout.frames) == FLAGS.train_frames)):
       if FLAGS.train:
         train_start = time.time()
 
@@ -328,6 +330,8 @@ def arg_parser():
 
   parser.add_argument('--train_on_reward', default=False, action='store_true',
                       help='Train model on every reward')
+  parser.add_argument('--train_frames', default=None, type=int,
+                      help='Train model every N frames')
 
   parser.add_argument('--pg_weight', type=float, default=1.0)
   parser.add_argument('--v_weight', type=float, default=0.5)
