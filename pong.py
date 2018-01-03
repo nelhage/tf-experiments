@@ -103,6 +103,7 @@ class PingPongModel(object):
 
     for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
       tf.summary.scalar('norm/' + var.name, tf.norm(var))
+      tf.summary.histogram('var/' + var.name, var)
 
   def add_train_ops(self):
     with tf.name_scope('Train'):
