@@ -68,7 +68,7 @@ class PingPongModel(object):
       tf.summary.histogram('conv1', self.h_conv1)
 
       self.h_conv2 = tf.contrib.layers.conv2d(
-        self.h_pool1, 16,
+        self.h_conv1, 16,
         stride=[2, 2],
         kernel_size=[4, 4],
         padding='SAME',
