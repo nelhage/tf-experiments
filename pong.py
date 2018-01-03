@@ -41,11 +41,6 @@ class PingPongModel(object):
     initial = tf.constant(0.1, shape=shape)
     return tf.Variable(initial, name)
 
-  @staticmethod
-  def max_pool_2x2(x):
-    return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
-                          strides=[1, 2, 2, 1], padding='SAME')
-
   def __init__(self):
     self.global_step = tf.Variable(1, name='global_step', trainable=False)
     with tf.name_scope('Frames'):
@@ -58,22 +53,31 @@ class PingPongModel(object):
     with tf.name_scope('Conv'):
       frame = tf.reshape(deltas, (-1, WIDTH//2, HEIGHT//2, PLANES))
 
-      self.W_conv1 = self.weight_variable((4, 4, PLANES, 16), 'w_1')
-      self.B_conv1 = self.bias_variable((16,), 'b_1')
+      self.h_conv1 = tf.contrib.layers.conv2d(
+        frame, 16,
+        stride=[2, 2],
+        kernel_size=[4, 4],
+        padding='SAME',
+        biases_initializer = tf.constant_initializer(0.1),
+      )
+      self.h_pool1 = tf.contrib.layers.max_pool2d(self.h_conv1,
+                                                  kernel_size=[2, 2],
+                                                  stride=[2, 2],
+                                                  padding='SAME')
 
-      self.h_conv1 = tf.nn.relu(
-        tf.nn.conv2d(frame, self.W_conv1, strides=[1, 2, 2, 1], padding='SAME')
-        + self.B_conv1)
-      self.h_pool1 = self.max_pool_2x2(self.h_conv1)
       tf.summary.histogram('conv1', self.h_conv1)
 
-      self.W_conv2 = self.weight_variable((4, 4, 16, 16), 'w_1')
-      self.B_conv2 = self.bias_variable((16,), 'b_2')
-
-      self.h_conv2 = tf.nn.relu(
-        tf.nn.conv2d(self.h_conv1, self.W_conv2, strides=[1, 2, 2, 1], padding='SAME')
-        + self.B_conv2)
-      self.h_pool2 = self.max_pool_2x2(self.h_conv2)
+      self.h_conv2 = tf.contrib.layers.conv2d(
+        self.h_pool1, 16,
+        stride=[2, 2],
+        kernel_size=[4, 4],
+        padding='SAME',
+        biases_initializer = tf.constant_initializer(0.1),
+      )
+      self.h_pool2 = tf.contrib.layers.max_pool2d(self.h_conv2,
+                                                  kernel_size=[2, 2],
+                                                  stride=[2, 2],
+                                                  padding='SAME')
       tf.summary.histogram('conv2', self.h_conv2)
 
     with tf.name_scope('Hidden'):
