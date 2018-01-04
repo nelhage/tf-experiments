@@ -60,10 +60,6 @@ class PingPongModel(object):
         padding='SAME',
         biases_initializer = tf.constant_initializer(0.1),
       )
-      self.h_pool1 = tf.contrib.layers.max_pool2d(self.h_conv1,
-                                                  kernel_size=[2, 2],
-                                                  stride=[2, 2],
-                                                  padding='SAME')
 
       tf.summary.histogram('conv1', self.h_conv1)
 
@@ -74,15 +70,11 @@ class PingPongModel(object):
         padding='SAME',
         biases_initializer = tf.constant_initializer(0.1),
       )
-      self.h_pool2 = tf.contrib.layers.max_pool2d(self.h_conv2,
-                                                  kernel_size=[2, 2],
-                                                  stride=[2, 2],
-                                                  padding='SAME')
       tf.summary.histogram('conv2', self.h_conv2)
 
     with tf.name_scope('Hidden'):
       a_h = tf.contrib.layers.fully_connected(
-        tf.contrib.layers.flatten(self.h_pool2),
+        tf.contrib.layers.flatten(self.h_conv2),
         num_outputs = FLAGS.hidden,
         activation_fn = tf.nn.relu,
         biases_initializer = tf.constant_initializer(0.1),
