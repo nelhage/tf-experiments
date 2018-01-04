@@ -125,7 +125,7 @@ class PingPongModel(object):
         FLAGS.entropy_weight * self.entropy)
 
       with tf.control_dependencies([self.global_step.assign_add(1)]):
-        self.optimizer = tf.train.GradientDescentOptimizer(FLAGS.eta)
+        self.optimizer = tf.train.AdamOptimizer(FLAGS.eta)
         grads = self.optimizer.compute_gradients(self.loss)
         clipped, norm = tf.clip_by_global_norm(
           [g for (g, v) in grads], FLAGS.clip_gradient)
@@ -311,7 +311,7 @@ def arg_parser():
                       help="Don't train")
   parser.add_argument('--hidden', type=int, default=256,
                       help='hidden neurons')
-  parser.add_argument('--eta', type=float, default=0.1,
+  parser.add_argument('--eta', type=float, default=1e-4,
                       help='learning rate')
   parser.add_argument('--checkpoint', type=int, default=0,
                       help='checkpoint every N rounds')
