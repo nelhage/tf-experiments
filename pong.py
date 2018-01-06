@@ -30,6 +30,10 @@ DISCOUNT = 0.99
 FLAGS = None
 
 class PingPongModel(object):
+  VARIABLES_COLLECTIONS = {
+    'weights': [tf.GraphKeys.WEIGHTS],
+  }
+
   def __init__(self):
     self.global_step = tf.Variable(1, name='global_step', trainable=False)
     with tf.name_scope('Frames'):
@@ -48,6 +52,7 @@ class PingPongModel(object):
         kernel_size=[4, 4],
         padding='SAME',
         biases_initializer = tf.constant_initializer(0.1),
+        variables_collections = self.VARIABLES_COLLECTIONS,
       )
 
       tf.summary.histogram('conv1', self.h_conv1)
@@ -58,6 +63,7 @@ class PingPongModel(object):
         kernel_size=[4, 4],
         padding='SAME',
         biases_initializer = tf.constant_initializer(0.1),
+        variables_collections = self.VARIABLES_COLLECTIONS,
       )
       tf.summary.histogram('conv2', self.h_conv2)
 
@@ -67,8 +73,7 @@ class PingPongModel(object):
         num_outputs = FLAGS.hidden,
         activation_fn = tf.nn.relu,
         biases_initializer = tf.constant_initializer(0.1),
-        trainable = True,
-        scope='Hidden',
+        variables_collections = self.VARIABLES_COLLECTIONS,
       )
       tf.summary.histogram('a_h', a_h)
 
@@ -78,7 +83,7 @@ class PingPongModel(object):
         num_outputs = ACTIONS,
         activation_fn = None,
         biases_initializer = tf.constant_initializer(0.1),
-        trainable = True,
+        variables_collections = self.VARIABLES_COLLECTIONS,
       )
       self.vp = tf.reshape(
         tf.contrib.layers.fully_connected(
@@ -86,7 +91,7 @@ class PingPongModel(object):
           num_outputs = 1,
           activation_fn = tf.tanh,
           biases_initializer = tf.constant_initializer(0.1),
-          trainable = True,
+          variables_collections = self.VARIABLES_COLLECTIONS,
         ), (-1,))
 
     self.logits = self.z_o
@@ -115,10 +120,18 @@ class PingPongModel(object):
         tf.reduce_sum(self.act_probs * tf.nn.log_softmax(self.logits), axis=1))
       tf.summary.scalar('entropy', self.entropy)
 
+      self.l2_loss = tf.contrib.layers.apply_regularization(
+        tf.contrib.layers.l2_regularizer(FLAGS.l2_weight))
+
+      if FLAGS.l2_weight != 0:
+        tf.summary.scalar('l2_loss', self.l2_loss / FLAGS.l2_weight)
+
       self.loss = (
         FLAGS.pg_weight * self.pg_loss +
         FLAGS.v_weight * self.v_loss -
-        FLAGS.entropy_weight * self.entropy)
+        FLAGS.entropy_weight * self.entropy +
+        self.l2_loss
+      )
 
       with tf.control_dependencies([self.global_step.assign_add(1)]):
         self.optimizer = tf.train.AdamOptimizer(FLAGS.eta)
@@ -330,6 +343,7 @@ def arg_parser():
   parser.add_argument('--pg_weight', type=float, default=1.0)
   parser.add_argument('--v_weight', type=float, default=0.5)
   parser.add_argument('--entropy_weight', type=float, default=0.01)
+  parser.add_argument('--l2_weight', type=float, default=1e-5)
   parser.add_argument('--clip_gradient', type=float, default=40.0)
   return parser
 
