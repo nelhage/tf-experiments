@@ -30,17 +30,6 @@ DISCOUNT = 0.99
 FLAGS = None
 
 class PingPongModel(object):
-  @staticmethod
-  def weight_variable(shape, name=None):
-    initial = tf.truncated_normal(
-      shape, stddev=0.05)
-    return tf.Variable(initial, name)
-
-  @staticmethod
-  def bias_variable(shape, name=None):
-    initial = tf.constant(0.1, shape=shape)
-    return tf.Variable(initial, name)
-
   def __init__(self):
     self.global_step = tf.Variable(1, name='global_step', trainable=False)
     with tf.name_scope('Frames'):
@@ -84,18 +73,25 @@ class PingPongModel(object):
       tf.summary.histogram('a_h', a_h)
 
     with tf.name_scope('Output'):
-      self.W_o = self.weight_variable((FLAGS.hidden, ACTIONS), 'w_l')
-      self.B_o = self.bias_variable((ACTIONS, ), 'b_l')
-
-      self.z_o = tf.matmul(a_h, self.W_o) + self.B_o
-
-      self.W_v = self.weight_variable((FLAGS.hidden, 1), 'w_v')
-      self.B_v = self.bias_variable((1,), 'b_v')
+      self.z_o = tf.contrib.layers.fully_connected(
+        a_h,
+        num_outputs = ACTIONS,
+        activation_fn = None,
+        biases_initializer = tf.constant_initializer(0.1),
+        trainable = True,
+      )
+      self.vp = tf.reshape(
+        tf.contrib.layers.fully_connected(
+          a_h,
+          num_outputs = 1,
+          activation_fn = tf.tanh,
+          biases_initializer = tf.constant_initializer(0.1),
+          trainable = True,
+        ), (-1,))
 
     self.logits = self.z_o
     tf.summary.histogram('logits', self.logits)
     self.act_probs = tf.nn.softmax(self.logits)
-    self.vp = tf.reshape(tf.tanh(tf.matmul(a_h, self.W_v) + self.B_v), (-1,))
 
     for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
       tf.summary.scalar('norm/' + var.name, tf.norm(var))
@@ -219,6 +215,7 @@ def main(_):
         model.prev_frame: np.expand_dims(prev_frame, 0)
       })
     r = np.random.uniform()
+
     for i, a in enumerate(act_probs[0]):
       if r <= a:
         action = i
