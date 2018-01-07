@@ -189,7 +189,10 @@ class PongEnvironment(object):
 
   @staticmethod
   def process_frame(frame, out):
-    return np.mean(frame, 2, keepdims=True, out=out)
+    frame = np.mean(frame, 2, keepdims=True, out=out)
+    out -= np.mean(out, (0, 1), keepdims=True)
+    out /= np.std(out, axis=(0, 1), keepdims=True)
+    return out
 
   def rollouts(self, session):
     env = gym.make('Pong-v0')
