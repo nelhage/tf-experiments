@@ -178,7 +178,10 @@ def build_actions(rollout):
   return actions
 
 def process_frame(frame):
-  return np.expand_dims(np.mean(frame, 2), -1)
+  frame = np.mean(frame, 2, keepdims=True)
+  frame -= np.mean(frame, (0, 1), keepdims=True)
+  frame /= np.std(frame, axis=(0, 1), keepdims=True)
+  return frame
 
 def main(_):
   env = gym.make('Pong-v0')
