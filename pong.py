@@ -179,7 +179,8 @@ def build_actions(rollout):
 
 def process_frame(frame):
   frame = np.mean(frame, 2, keepdims=True)
-  frame /= 256
+  frame -= np.mean(frame, (0, 1), keepdims=True)
+  frame /= np.std(frame, axis=(0, 1), keepdims=True)
   return frame
 
 def main(_):
