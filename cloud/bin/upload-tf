@@ -5,4 +5,4 @@ version="${image#*:}"
 
 gcloud auth activate-service-account "--key-file=$GOOGLE_APPLICATION_CREDENTIALS"
 
-gsutil -m cp -r /data/ "gs://nelhage-ml/pong/$name-$version/"
+gsutil -m cp -r '/data/**' "gs://nelhage-ml/pong/$name-$version/"
