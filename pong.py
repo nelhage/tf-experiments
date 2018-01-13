@@ -277,11 +277,11 @@ def main(_):
         train_end = time.time()
 
         if avgreward is None:
-          avgreward = sum(rollout.rewards)
-        avgreward = 0.9 * avgreward + 0.1 * sum(rollout.rewards)
-        print("done round={global_step} frames={frames} reward={reward} expreward={avgreward:.1f} pg_loss={pg_loss} v_loss={v_loss} actions={actions}".format(
+          avgreward = np.mean(rewards)
+        avgreward = 0.9 * avgreward + 0.1 * np.mean(rewards)
+        print("done round={global_step} frames={frames} reward={reward:.3f} expreward={avgreward:.3f} pg_loss={pg_loss} v_loss={v_loss} actions={actions}".format(
           frames = len(rollout.actions),
-          reward = sum(rollout.rewards),
+          reward = np.mean(rewards),
           avgreward = avgreward,
           actions = collections.Counter(rollout.actions),
           pg_loss = out['pg_loss'],
@@ -296,7 +296,7 @@ def main(_):
         summary = tf.Summary()
         summary.value.add(tag='env/frames', simple_value=float(len(rollout.actions)))
         summary.value.add(tag='env/fps', simple_value=fps)
-        summary.value.add(tag='env/reward', simple_value=sum(rollout.rewards))
+        summary.value.add(tag='env/reward', simple_value=np.mean(rewards))
         summary_writer.add_summary(summary, global_step)
         summary_writer.add_summary(out['summary'], global_step)
 
