@@ -108,6 +108,7 @@ class PingPongModel(object):
       tf.summary.histogram('advantage', self.adv)
       self.rewards = tf.placeholder(tf.float32, [None], name="Reward")
       tf.summary.histogram('weighted_reward', self.rewards)
+      tf.summary.histogram('predicted_value', self.vp)
       self.actions = tf.placeholder(tf.float32, [None, ACTIONS], name="SampledActions")
 
       self.cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o)
