@@ -102,7 +102,7 @@ class PingPongModel(object):
       tf.summary.scalar('norm/' + var.name, tf.norm(var))
       tf.summary.histogram('var/' + var.name, var)
 
-  def add_train_ops(self):
+  def add_loss(self):
     with tf.name_scope('Train'):
       self.adv  = tf.placeholder(tf.float32, [None], name="Advantage")
       tf.summary.histogram('advantage', self.adv)
@@ -134,14 +134,15 @@ class PingPongModel(object):
         self.l2_loss
       )
 
-      with tf.control_dependencies([self.global_step.assign_add(1)]):
-        self.optimizer = tf.train.AdamOptimizer(FLAGS.eta)
-        grads = self.optimizer.compute_gradients(self.loss)
-        clipped, norm = tf.clip_by_global_norm(
-          [g for (g, v) in grads], FLAGS.clip_gradient)
-        tf.summary.scalar('grad_norm', norm)
-        self.train_step = self.optimizer.apply_gradients(
-          (c, v) for (c, (_,v)) in zip(clipped, grads))
+def train_model(model):
+  with tf.control_dependencies([model.global_step.assign_add(1)]):
+    optimizer = tf.train.AdamOptimizer(FLAGS.eta)
+    grads = optimizer.compute_gradients(model.loss)
+    clipped, norm = tf.clip_by_global_norm(
+      [g for (g, v) in grads], FLAGS.clip_gradient)
+    tf.summary.scalar('grad_norm', norm)
+    return optimizer.apply_gradients(
+      (c, v) for (c, (_,v)) in zip(clipped, grads))
 
 @attr.s
 class Rollout(object):
@@ -157,6 +158,7 @@ class Rollout(object):
     del self.actions[:]
     del self.rewards[:]
     del self.vp[:]
+
 
 def build_rewards(rollout):
   discounted = np.zeros((len(rollout.actions),))
@@ -185,7 +187,8 @@ def main(_):
   env = gym.make('Pong-v0')
   model = PingPongModel()
   if FLAGS.train:
-    model.add_train_ops()
+    model.add_loss()
+    train_step = train_model(model)
 
   this_frame = process_frame(env.reset())
   prev_frame = np.zeros_like(this_frame)
@@ -260,7 +263,7 @@ def main(_):
         ops = {
           'pg_loss': model.pg_loss,
           'v_loss': model.v_loss,
-          'train': model.train_step,
+          'train': train_step,
         }
         if summary_op is not None:
           ops['summary'] = summary_op
