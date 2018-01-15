@@ -197,13 +197,13 @@ class PongEnvironment(object):
 
       next_frame, reward, done, info = env.step(2 + action)
 
-      prev_frame = this_frame
-      this_frame = self.process_frame(next_frame)
-
       rollout.frames.append(this_frame)
       rollout.actions.append(action)
       rollout.rewards.append(reward)
       rollout.vp.append(vp[0])
+
+      prev_frame = this_frame
+      this_frame = self.process_frame(next_frame)
 
       if (done or
           (FLAGS.train_on_reward and reward != 0) or
