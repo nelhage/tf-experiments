@@ -211,12 +211,11 @@ class PongEnvironment(object):
           (FLAGS.train_frames and len(rollout.frames) == FLAGS.train_frames)):
         yield rollout
 
-        prev_frame = np.zeros_like(this_frame)
+        if done:
+          prev_frame = self.process_frame(env.reset())
+
         rollout.clear()
         rollout.frames.append(prev_frame)
-
-        if done:
-          env.reset()
 
 def build_rewards(rollout):
   discounted = np.zeros((len(rollout.actions),))
