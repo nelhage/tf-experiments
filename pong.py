@@ -25,8 +25,6 @@ HEIGHT = 160
 PLANES = 1
 ACTIONS = 2
 
-DISCOUNT = 0.99
-
 FLAGS = None
 
 class PingPongModel(object):
@@ -225,7 +223,7 @@ def build_rewards(rollout):
     if rw != 0:
       r = rw
     discounted[i] = r
-    r *= DISCOUNT
+    r *= FLAGS.discount
 
   rollout.discounted = discounted
   return rollout.discounted
@@ -339,6 +337,8 @@ def arg_parser():
                       help='hidden neurons')
   parser.add_argument('--eta', type=float, default=1e-4,
                       help='learning rate')
+  parser.add_argument('--discount', type=float, default=0.99,
+                      help='discount rate')
   parser.add_argument('--checkpoint', type=int, default=0,
                       help='checkpoint every N rounds')
   parser.add_argument('--summary_interval', type=int, default=5,
