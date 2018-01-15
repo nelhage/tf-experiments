@@ -45,7 +45,7 @@ class PingPongModel(object):
 
     self.h_conv1 = tf.contrib.layers.conv2d(
       frame, 16,
-      name_scope='Conv1',
+      scope='Conv1',
       stride=[2, 2],
       kernel_size=[4, 4],
       padding='SAME',
@@ -57,7 +57,7 @@ class PingPongModel(object):
 
     self.h_conv2 = tf.contrib.layers.conv2d(
       self.h_conv1, 16,
-      name_scope='Conv2',
+      scope='Conv2',
       stride=[2, 2],
       kernel_size=[4, 4],
       padding='SAME',
@@ -68,7 +68,7 @@ class PingPongModel(object):
 
     a_h = tf.contrib.layers.fully_connected(
       tf.contrib.layers.flatten(self.h_conv2),
-      name_scope = 'Hidden',
+      scope = 'Hidden',
       num_outputs = FLAGS.hidden,
       activation_fn = tf.nn.relu,
       biases_initializer = tf.constant_initializer(0.1),
@@ -78,7 +78,7 @@ class PingPongModel(object):
 
     self.z_o = tf.contrib.layers.fully_connected(
       a_h,
-      name_scope = 'Logits',
+      scope = 'Logits',
       num_outputs = ACTIONS,
       activation_fn = None,
       biases_initializer = tf.constant_initializer(0.1),
@@ -87,7 +87,7 @@ class PingPongModel(object):
     self.vp = tf.reshape(
       tf.contrib.layers.fully_connected(
         a_h,
-        name_scope = 'Value',
+        scope = 'Value',
         num_outputs = 1,
         activation_fn = tf.tanh,
         biases_initializer = tf.constant_initializer(0.1),
