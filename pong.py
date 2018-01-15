@@ -208,6 +208,8 @@ class PongEnvironment(object):
       if (done or
           (FLAGS.train_on_reward and reward != 0) or
           (FLAGS.train_frames and len(rollout.frames) == FLAGS.train_frames)):
+        if not done:
+          rollout.rewards[-1] = rollout.vp[-1]
         yield rollout
 
         if done:
