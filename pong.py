@@ -364,9 +364,6 @@ def arg_parser():
   parser.add_argument('--load_model', type=str, default=None,
                       help='restore model')
 
-  parser.add_argument('--debug', action='store_true',
-                      help='debug spew')
-
   parser.add_argument('--train_frames', default=1000, type=int,
                       help='Train model every N frames')
 
