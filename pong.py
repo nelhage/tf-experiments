@@ -144,17 +144,38 @@ def train_model(model):
     return optimizer.apply_gradients(
       (c, v) for (c, (_,v)) in zip(clipped, grads))
 
-@attr.s
+@attr.s(init=False)
 class Rollout(object):
-  frames    = attr.ib(default=attr.Factory(list))
-  actions   = attr.ib(default=attr.Factory(list))
-  rewards   = attr.ib(default=attr.Factory(list))
-  vp        = attr.ib(default=attr.Factory(list))
+  frames    = attr.ib()
+  actions   = attr.ib()
+  rewards   = attr.ib()
+  vp        = attr.ib()
+
+  next_frame = attr.ib()
 
   discounted = attr.ib(default=None)
 
+  def __init__(self):
+    self.frames = np.zeros((FLAGS.train_frames, WIDTH, HEIGHT, PLANES))
+    self.next_frame = 0
+    self.actions = []
+    self.rewards = []
+    self.vp = []
+
+  def advance_frame(self):
+    out = self.frames[self.next_frame]
+    self.next_frame += 1
+    return out
+
+  def this_frame(self):
+    return self.frames[self.next_frame-1:self.next_frame]
+
+  def prev_frame(self):
+    return self.frames[self.next_frame-2:self.next_frame-1]
+
   def clear(self):
-    del self.frames[:]
+    self.frames[0] = self.frames[self.next_frame-1]
+    self.next_frame = 1
     del self.actions[:]
     del self.rewards[:]
     del self.vp[:]
@@ -164,17 +185,15 @@ class PongEnvironment(object):
     self.model = model
 
   @staticmethod
-  def process_frame(frame):
-    return np.expand_dims(np.mean(frame, 2), -1)
+  def process_frame(frame, out):
+    return np.mean(frame, 2, keepdims=True, out=out)
 
   def rollouts(self, session):
     env = gym.make('Pong-v0')
-    this_frame = self.process_frame(env.reset())
-    prev_frame = np.zeros_like(this_frame)
 
-    rollout = Rollout(
-      frames=[prev_frame],
-    )
+    rollout = Rollout()
+    rollout.advance_frame().fill(0)
+    self.process_frame(env.reset(), rollout.advance_frame())
 
     while True:
       if FLAGS.render:
@@ -184,8 +203,8 @@ class PongEnvironment(object):
         [self.model.act_probs, self.model.vp, self.model.global_step],
         feed_dict=
         {
-          self.model.this_frame: np.expand_dims(this_frame, 0),
-          self.model.prev_frame: np.expand_dims(prev_frame, 0)
+          self.model.this_frame: rollout.this_frame(),
+          self.model.prev_frame: rollout.prev_frame(),
         })
       r = np.random.uniform()
 
@@ -197,26 +216,21 @@ class PongEnvironment(object):
 
       next_frame, reward, done, info = env.step(2 + action)
 
-      rollout.frames.append(this_frame)
       rollout.actions.append(action)
       rollout.rewards.append(reward)
       rollout.vp.append(vp[0])
 
-      prev_frame = this_frame
-      this_frame = self.process_frame(next_frame)
+      if done or rollout.next_frame == FLAGS.train_frames:
+        rollout.rewards[-1] = rollout.vp[-1]
 
-      if (done or
-          (FLAGS.train_on_reward and reward != 0) or
-          (FLAGS.train_frames and len(rollout.frames) == FLAGS.train_frames)):
-        if not done:
-          rollout.rewards[-1] = rollout.vp[-1]
         yield rollout
 
-        if done:
-          prev_frame = self.process_frame(env.reset())
-
         rollout.clear()
-        rollout.frames.append(prev_frame)
+
+        if done:
+          self.process_frame(env.reset(), rollout.this_frame()[0])
+
+      self.process_frame(next_frame, rollout.advance_frame())
 
 def build_rewards(rollout):
   discounted = np.zeros((len(rollout.actions),))
@@ -291,8 +305,8 @@ def main(_):
       out = session.run(
         ops,
         feed_dict = {
-          model.this_frame: rollout.frames[1:],
-          model.prev_frame: rollout.frames[:-1],
+          model.this_frame: rollout.frames[1:rollout.next_frame],
+          model.prev_frame: rollout.frames[:rollout.next_frame-1],
           model.actions:    actions,
           model.rewards:    rewards,
           model.adv:        adv,
@@ -353,9 +367,7 @@ def arg_parser():
   parser.add_argument('--debug', action='store_true',
                       help='debug spew')
 
-  parser.add_argument('--train_on_reward', default=False, action='store_true',
-                      help='Train model on every reward')
-  parser.add_argument('--train_frames', default=None, type=int,
+  parser.add_argument('--train_frames', default=1000, type=int,
                       help='Train model every N frames')
 
   parser.add_argument('--pg_weight', type=float, default=1.0)
