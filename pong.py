@@ -55,8 +55,13 @@ class PingPongModel(object):
 
     tf.summary.histogram('conv1', self.h_conv1)
 
+    out = self.h_conv1
+    if FLAGS.pool:
+      out = tf.contrib.layers.max_pool2d(
+        out, kernel_size=[2, 2], stride=[2, 2], padding='SAME')
+
     self.h_conv2 = tf.contrib.layers.conv2d(
-      self.h_conv1, 16,
+      out, 16,
       scope='Conv2',
       stride=[2, 2],
       kernel_size=[4, 4],
@@ -66,8 +71,13 @@ class PingPongModel(object):
     )
     tf.summary.histogram('conv2', self.h_conv2)
 
+    out = self.h_conv2
+    if FLAGS.pool:
+      out = tf.contrib.layers.max_pool2d(
+        out, kernel_size=[2, 2], stride=[2, 2], padding='SAME')
+
     a_h = tf.contrib.layers.fully_connected(
-      tf.contrib.layers.flatten(self.h_conv2),
+      tf.contrib.layers.flatten(out),
       scope = 'Hidden',
       num_outputs = FLAGS.hidden,
       activation_fn = tf.nn.relu,
@@ -366,6 +376,9 @@ def arg_parser():
 
   parser.add_argument('--train_frames', default=1000, type=int,
                       help='Train model every N frames')
+
+  parser.add_argument('--pool', default=False, action='store_true',
+                      help='max pool after convolving')
 
   parser.add_argument('--pg_weight', type=float, default=1.0)
   parser.add_argument('--v_weight', type=float, default=0.5)
