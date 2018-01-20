@@ -108,10 +108,6 @@ class PingPongModel(object):
     tf.summary.histogram('logits', self.logits)
     self.act_probs = tf.nn.softmax(self.logits)
 
-    for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
-      tf.summary.scalar('norm/' + var.name, tf.norm(var))
-      tf.summary.histogram('var/' + var.name, var)
-
   def add_loss(self):
     with tf.name_scope('Train'):
       self.adv  = tf.placeholder(tf.float32, [None], name="Advantage")
@@ -126,7 +122,6 @@ class PingPongModel(object):
       tf.summary.scalar('pg_loss', self.pg_loss)
       self.v_loss = 0.5 * tf.reduce_mean(tf.square(self.vp - self.rewards))
       tf.summary.scalar('value_loss', self.v_loss)
-      tf.summary.histogram('value_err', (self.vp - self.rewards))
       self.entropy = -tf.reduce_mean(
         tf.reduce_sum(self.act_probs * tf.nn.log_softmax(self.logits), axis=1))
       tf.summary.scalar('entropy', self.entropy)
