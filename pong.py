@@ -140,7 +140,7 @@ class PingPongModel(object):
       )
 
 def train_model(model):
-  with tf.control_dependencies([model.global_step.assign_add(1)]):
+  with tf.control_dependencies([model.global_step.assign_add(tf.shape(model.this_frame)[0])]):
     optimizer = tf.train.AdamOptimizer(FLAGS.eta)
     grads = optimizer.compute_gradients(model.loss)
     clipped, norm = tf.clip_by_global_norm(
@@ -285,8 +285,10 @@ def main(_):
   else:
     summary_op = summary_writer = None
 
-  write_summaries = summary_writer and FLAGS.summary_interval
+  write_summaries = summary_writer and FLAGS.summary_frames
+  next_summary = FLAGS.summary_frames
   write_checkpoints = FLAGS.logdir and FLAGS.checkpoint
+  next_checkpoint = time.time() + FLAGS.checkpoint
 
   avgreward = None
 
@@ -335,7 +337,8 @@ def main(_):
         train_start-reset_time, train_end-train_start, fps))
       reset_time = time.time()
 
-    if write_summaries and out['global_step'] % FLAGS.summary_interval == 0:
+    if write_summaries and out['global_step'] >= next_summary:
+      next_summary = out['global_step'] + FLAGS.summary_frames
       summary = tf.Summary()
       summary.value.add(tag='env/frames', simple_value=float(len(rollout.actions)))
       summary.value.add(tag='env/fps', simple_value=fps)
@@ -343,7 +346,8 @@ def main(_):
       summary_writer.add_summary(summary, out['global_step'])
       summary_writer.add_summary(out['summary'], out['global_step'])
 
-    if write_checkpoints and out['global_step'] % FLAGS.checkpoint == 0:
+    if write_checkpoints and time.time() > next_checkpoint:
+      next_checkpoint = time.time() + FLAGS.checkpoint
       saver.save(session, os.path.join(FLAGS.logdir, 'pong'), global_step=out['global_step'])
 
 def arg_parser():
@@ -361,9 +365,9 @@ def arg_parser():
   parser.add_argument('--discount', type=float, default=0.99,
                       help='discount rate')
   parser.add_argument('--checkpoint', type=int, default=0,
-                      help='checkpoint every N rounds')
-  parser.add_argument('--summary_interval', type=int, default=5,
-                      help='write summaries every N rounds')
+                      help='checkpoint every N seconds')
+  parser.add_argument('--summary_frames', type=int, default=1000,
+                      help='write summaries every N frames')
   parser.add_argument('--logdir', type=str, default=None,
                       help='log path')
   parser.add_argument('--load_model', type=str, default=None,
