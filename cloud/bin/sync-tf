@@ -1,0 +1,11 @@
+#!/bin/bash
+name="$1"
+image="$2"
+version="${image#*:}"
+
+gcloud auth activate-service-account "--key-file=$GOOGLE_APPLICATION_CREDENTIALS"
+
+while :; do
+    gsutil -m rsync -d -r '/data/.' "gs://nelhage-ml/pong/$name-$version/"
+    sleep 30m
+done
