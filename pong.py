@@ -158,8 +158,6 @@ class Rollout(object):
 
   next_frame = attr.ib()
 
-  discounted = attr.ib(default=None)
-
   def __init__(self):
     self.frames = np.zeros((FLAGS.train_frames, WIDTH, HEIGHT, PLANES))
     self.next_frame = 0
@@ -237,19 +235,13 @@ class PongEnvironment(object):
 
       self.process_frame(next_frame, rollout.advance_frame())
 
-def build_rewards(rollout):
-  discounted = np.zeros((len(rollout.actions),))
-  r = 0
-  for i,rw in reversed(list(enumerate(rollout.rewards))):
-    if rw != 0:
-      r = rw
-    discounted[i] = r
-    r *= FLAGS.discount
+def discount(x, gamma):
+    return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
-  rollout.discounted = discounted
-  return rollout.discounted
+def build_rewards(rollout, gamma):
+  return discount(rollout.rewards, gamma)
 
-def build_advantage(rollout, gamma=DISCOUNT, lambda_=1.0):
+def build_advantage(rollout, gamma, lambda_=1.0):
   rewards = np.array(rollout.rewards)
   vp_t = np.array(rollout.vp + [0])
 
@@ -300,8 +292,8 @@ def main(_):
     if FLAGS.train:
       train_start = time.time()
 
-      rewards = build_rewards(rollout)
-      adv     = build_advantage(rollout)
+      rewards = build_rewards(rollout, FLAGS.discount)
+      adv     = build_advantage(rollout, FLAGS.discount)
       actions = build_actions(rollout)
 
       ops = {
