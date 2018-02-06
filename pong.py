@@ -23,6 +23,7 @@ import scipy.signal
 WIDTH  = 210
 HEIGHT = 160
 PLANES = 1
+HISTORY = 2
 ACTIONS = 2
 
 FLAGS = None
@@ -35,16 +36,15 @@ class PingPongModel(object):
   def __init__(self):
     self.global_step = tf.Variable(1, name='global_step', trainable=False)
     with tf.name_scope('Frames'):
-      self.prev_frame = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="ThisFrame")
-      self.this_frame = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="PrevFrame")
+      self.frames = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="Frames")
 
-    deltas = self.this_frame - self.prev_frame
-    deltas = deltas[:,::2,::2]
-
-    frame = tf.reshape(deltas, (-1, WIDTH//2, HEIGHT//2, PLANES))
+    downsampled = self.frames[:,::2,::2]
+    stacks = [downsampled[i:-(HISTORY-1-i) if i < HISTORY-1 else None] for i in range(HISTORY)]
+    frames = tf.stack(stacks, axis=4)
+    frames = tf.reshape(frames, (-1, WIDTH//2, HEIGHT//2, HISTORY*PLANES))
 
     self.h_conv1 = tf.contrib.layers.conv2d(
-      frame, 16,
+      frames, 16,
       scope='Conv1',
       stride=[2, 2],
       kernel_size=[4, 4],
@@ -140,7 +140,7 @@ class PingPongModel(object):
       )
 
 def train_model(model):
-  with tf.control_dependencies([model.global_step.assign_add(tf.shape(model.this_frame)[0])]):
+  with tf.control_dependencies([model.global_step.assign_add(tf.shape(model.frames)[0])]):
     optimizer = tf.train.AdamOptimizer(FLAGS.eta)
     grads = optimizer.compute_gradients(model.loss)
     clipped, norm = tf.clip_by_global_norm(
@@ -170,14 +170,11 @@ class Rollout(object):
     self.next_frame += 1
     return out
 
-  def this_frame(self):
-    return self.frames[self.next_frame-1:self.next_frame]
-
-  def prev_frame(self):
-    return self.frames[self.next_frame-2:self.next_frame-1]
+  def get_frames(self):
+    return self.frames[:self.next_frame]
 
   def clear(self):
-    self.frames[0] = self.frames[self.next_frame-1]
+    self.frames[:HISTORY] = self.frames[self.next_frame-HISTORY:self.next_frame]
     self.next_frame = 1
     del self.actions[:]
     del self.rewards[:]
@@ -198,7 +195,8 @@ class PongEnvironment(object):
     env = gym.make('Pong-v0')
 
     rollout = Rollout()
-    rollout.advance_frame().fill(0)
+    for i in range(HISTORY-1):
+      rollout.advance_frame().fill(0)
     self.process_frame(env.reset(), rollout.advance_frame())
 
     while True:
@@ -207,10 +205,9 @@ class PongEnvironment(object):
 
       act_probs, vp, global_step = session.run(
         [self.model.act_probs, self.model.vp, self.model.global_step],
-        feed_dict=
-        {
-          self.model.this_frame: rollout.this_frame(),
-          self.model.prev_frame: rollout.prev_frame(),
+        feed_dict={
+          self.model.frames: rollout.frames[
+            rollout.next_frame-HISTORY:rollout.next_frame]
         })
       r = np.random.uniform()
 
@@ -234,7 +231,7 @@ class PongEnvironment(object):
         rollout.clear()
 
         if done:
-          self.process_frame(env.reset(), rollout.this_frame()[0])
+          self.process_frame(env.reset(), rollout.frames[0])
 
       self.process_frame(next_frame, rollout.advance_frame())
 
@@ -304,6 +301,7 @@ def main(_):
         'v_loss': model.v_loss,
         'train': train_step,
         'global_step': model.global_step,
+        'vp': model.vp,
       }
       if summary_op is not None:
         ops['summary'] = summary_op
@@ -311,13 +309,14 @@ def main(_):
       out = session.run(
         ops,
         feed_dict = {
-          model.this_frame: rollout.frames[1:rollout.next_frame],
-          model.prev_frame: rollout.frames[:rollout.next_frame-1],
-          model.actions:    actions,
-          model.rewards:    rewards,
-          model.adv:        adv,
+          model.frames:  rollout.get_frames(),
+          model.actions: actions,
+          model.rewards: rewards,
+          model.adv:     adv,
         })
       train_end = time.time()
+#      print("run_vp={}".format(rollout.vp))
+#      print("batch_vp={}".format(out['vp']))
 
       if avgreward is None:
         avgreward = np.mean(rewards)
