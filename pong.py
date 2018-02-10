@@ -384,7 +384,7 @@ def arg_parser():
   parser.add_argument('--pg_weight', type=float, default=1.0)
   parser.add_argument('--v_weight', type=float, default=0.5)
   parser.add_argument('--entropy_weight', type=float, default=0.01)
-  parser.add_argument('--l2_weight', type=float, default=1e-5)
+  parser.add_argument('--l2_weight', type=float, default=0)
   parser.add_argument('--clip_gradient', type=float, default=40.0)
   return parser
 
