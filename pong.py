@@ -23,7 +23,6 @@ import scipy.signal
 WIDTH  = 210
 HEIGHT = 160
 PLANES = 1
-HISTORY = 2
 ACTIONS = 2
 
 FLAGS = None
@@ -39,9 +38,12 @@ class PingPongModel(object):
       self.frames = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="Frames")
 
     downsampled = self.frames[:,::2,::2]
-    stacks = [downsampled[i:-(HISTORY-1-i) if i < HISTORY-1 else None] for i in range(HISTORY)]
-    frames = tf.stack(stacks, axis=4)
-    frames = tf.reshape(frames, (-1, WIDTH//2, HEIGHT//2, HISTORY*PLANES))
+    if FLAGS.history == 1:
+      frames = downsampled[1:] - downsampled[:-1]
+    else:
+      stacks = [downsampled[i:-(FLAGS.history-1-i) if i < FLAGS.history-1 else None] for i in range(FLAGS.history)]
+      frames = tf.stack(stacks, axis=4)
+      frames = tf.reshape(frames, (-1, WIDTH//2, HEIGHT//2, FLAGS.history*PLANES))
 
     self.h_conv1 = tf.contrib.layers.conv2d(
       frames, 16,
@@ -174,7 +176,7 @@ class Rollout(object):
     return self.frames[:self.next_frame]
 
   def clear(self):
-    self.frames[:HISTORY] = self.frames[self.next_frame-HISTORY:self.next_frame]
+    self.frames[:FLAGS.history] = self.frames[self.next_frame-FLAGS.history:self.next_frame]
     self.next_frame = 1
     del self.actions[:]
     del self.rewards[:]
@@ -195,7 +197,7 @@ class PongEnvironment(object):
     env = gym.make('Pong-v0')
 
     rollout = Rollout()
-    for i in range(HISTORY-1):
+    for i in range(max(1, FLAGS.history-1)):
       rollout.advance_frame().fill(0)
     self.process_frame(env.reset(), rollout.advance_frame())
 
@@ -207,7 +209,7 @@ class PongEnvironment(object):
         [self.model.act_probs, self.model.vp, self.model.global_step],
         feed_dict={
           self.model.frames: rollout.frames[
-            rollout.next_frame-HISTORY:rollout.next_frame]
+            rollout.next_frame-max(2, FLAGS.history):rollout.next_frame]
         })
       r = np.random.uniform()
 
@@ -358,6 +360,8 @@ def arg_parser():
                       help="Don't train")
   parser.add_argument('--hidden', type=int, default=256,
                       help='hidden neurons')
+  parser.add_argument('--history', type=int, default=2,
+                      help='history frames')
   parser.add_argument('--eta', type=float, default=1e-4,
                       help='learning rate')
   parser.add_argument('--discount', type=float, default=0.99,
@@ -374,8 +378,8 @@ def arg_parser():
   parser.add_argument('--train_frames', default=1000, type=int,
                       help='Train model every N frames')
 
-  parser.add_argument('--pool', default=False, action='store_true',
-                      help='max pool after convolving')
+  parser.add_argument('--no-pool', dest='pool', default=True, action='store_false',
+                      help='disable max pool')
 
   parser.add_argument('--pg_weight', type=float, default=1.0)
   parser.add_argument('--v_weight', type=float, default=0.5)
