@@ -318,8 +318,6 @@ def main(_):
           model.adv:     adv,
         })
       train_end = time.time()
-#      print("run_vp={}".format(rollout.vp))
-#      print("batch_vp={}".format(out['vp']))
 
       if avgreward is None:
         avgreward = np.mean(rewards)
