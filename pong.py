@@ -160,6 +160,8 @@ class Rollout(object):
   vp        = attr.ib()
 
   next_frame = attr.ib()
+  last = attr.ib()
+  first = attr.ib()
 
   def __init__(self):
     self.frames = np.zeros((FLAGS.train_frames, WIDTH, HEIGHT, PLANES))
@@ -167,6 +169,8 @@ class Rollout(object):
     self.actions = []
     self.rewards = []
     self.vp = []
+    self.last = False
+    self.first = True
 
   def advance_frame(self):
     out = self.frames[self.next_frame]
@@ -182,6 +186,8 @@ class Rollout(object):
     del self.actions[:]
     del self.rewards[:]
     del self.vp[:]
+    self.last = False
+    self.first = False
 
 class PongEnvironment(object):
   def __init__(self, model):
@@ -227,13 +233,14 @@ class PongEnvironment(object):
       rollout.vp.append(vp[0])
 
       if done or rollout.next_frame == FLAGS.train_frames:
-        rollout.rewards[-1] = rollout.vp[-1]
+        rollout.last = done
 
         yield rollout
 
         rollout.clear()
 
         if done:
+          rollout.first = True
           self.process_frame(env.reset(), rollout.frames[0])
 
       self.process_frame(next_frame, rollout.advance_frame())
@@ -242,10 +249,10 @@ def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
 def build_rewards(rollout, gamma):
-  return discount(rollout.rewards, gamma)
+  return discount(rollout.rewards[:-1]+rollout.vp[-1:], gamma)
 
 def build_advantage(rollout, gamma, lambda_=1.0):
-  rewards = np.array(rollout.rewards)
+  rewards = np.array(rollout.rewards[:-1]+rollout.vp[-1:])
   vp_t = np.array(rollout.vp + [0])
 
   delta_t = rewards + gamma * vp_t[1:] - vp_t[:-1]
@@ -284,12 +291,13 @@ def main(_):
   else:
     summary_op = summary_writer = None
 
-  write_summaries = summary_writer and FLAGS.summary_frames
-  next_summary = FLAGS.summary_frames
-  write_checkpoints = FLAGS.logdir and FLAGS.checkpoint
+  write_summaries = FLAGS.train and FLAGS.logdir
+  write_checkpoints = FLAGS.train and FLAGS.logdir and FLAGS.checkpoint
   next_checkpoint = time.time() + FLAGS.checkpoint
 
   avgreward = None
+  rollout_frames = 0
+  rollout_reward = 0
 
   for rollout in env.rollouts(session):
     if FLAGS.train:
@@ -336,14 +344,24 @@ def main(_):
         train_start-reset_time, train_end-train_start, fps))
       reset_time = time.time()
 
-    if write_summaries and out['global_step'] >= next_summary:
-      next_summary = out['global_step'] + FLAGS.summary_frames
+    rollout_frames += len(rollout.actions)
+    rollout_reward += sum(rollout.rewards)
+
+    if write_summaries and rollout.first:
+      print("rollout done frames={frames} reward={reward} step={global_step} vp0={vp0}".format(
+        frames = rollout_frames,
+        reward = rollout_reward,
+        global_step = out['global_step'],
+        vp0 = rollout.vp[0],
+      ))
       summary = tf.Summary()
-      summary.value.add(tag='env/frames', simple_value=float(len(rollout.actions)))
+      summary.value.add(tag='env/frames', simple_value=rollout_frames)
       summary.value.add(tag='env/fps', simple_value=fps)
-      summary.value.add(tag='env/reward', simple_value=np.mean(rewards))
+      summary.value.add(tag='env/reward', simple_value=rollout_reward)
       summary_writer.add_summary(summary, out['global_step'])
       summary_writer.add_summary(out['summary'], out['global_step'])
+      rollout_frames = 0
+      rollout_reward = 0
 
     if write_checkpoints and time.time() > next_checkpoint:
       next_checkpoint = time.time() + FLAGS.checkpoint
@@ -367,8 +385,6 @@ def arg_parser():
                       help='discount rate')
   parser.add_argument('--checkpoint', type=int, default=0,
                       help='checkpoint every N seconds')
-  parser.add_argument('--summary_frames', type=int, default=1000,
-                      help='write summaries every N frames')
   parser.add_argument('--logdir', type=str, default=None,
                       help='log path')
   parser.add_argument('--load_model', type=str, default=None,
@@ -383,7 +399,7 @@ def arg_parser():
   parser.add_argument('--pg_weight', type=float, default=1.0)
   parser.add_argument('--v_weight', type=float, default=0.5)
   parser.add_argument('--entropy_weight', type=float, default=0.01)
-  parser.add_argument('--l2_weight', type=float, default=0)
+  parser.add_argument('--l2_weight', type=float, default=0.0)
   parser.add_argument('--clip_gradient', type=float, default=40.0)
   return parser
 
