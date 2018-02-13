@@ -128,11 +128,12 @@ class PingPongModel(object):
         tf.reduce_sum(self.act_probs * tf.nn.log_softmax(self.logits), axis=1))
       tf.summary.scalar('entropy', self.entropy)
 
-      self.l2_loss = tf.contrib.layers.apply_regularization(
-        tf.contrib.layers.l2_regularizer(FLAGS.l2_weight))
-
       if FLAGS.l2_weight != 0:
+        self.l2_loss = tf.contrib.layers.apply_regularization(
+          tf.contrib.layers.l2_regularizer(FLAGS.l2_weight))
         tf.summary.scalar('l2_loss', self.l2_loss / FLAGS.l2_weight)
+      else:
+        self.l2_loss = 0
 
       self.loss = (
         FLAGS.pg_weight * self.pg_loss +
