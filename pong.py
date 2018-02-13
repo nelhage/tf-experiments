@@ -351,6 +351,7 @@ def main(_):
       summary.value.add(tag='env/frames', simple_value=rollout_frames)
       summary.value.add(tag='env/fps', simple_value=fps)
       summary.value.add(tag='env/reward', simple_value=rollout_reward)
+      summary.value.add(tag='Train/vp0', simple_value=rollout.vp[0])
       summary_writer.add_summary(summary, out['global_step'])
       summary_writer.add_summary(out['summary'], out['global_step'])
       rollout_frames = 0
