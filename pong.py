@@ -55,7 +55,6 @@ class PingPongModel(object):
       variables_collections = self.VARIABLES_COLLECTIONS,
     )
 
-    tf.summary.histogram('conv1', self.h_conv1)
 
     out = self.h_conv1
     if FLAGS.pool:
@@ -71,7 +70,6 @@ class PingPongModel(object):
       biases_initializer = tf.constant_initializer(0.1),
       variables_collections = self.VARIABLES_COLLECTIONS,
     )
-    tf.summary.histogram('conv2', self.h_conv2)
 
     out = self.h_conv2
     if FLAGS.pool:
@@ -86,7 +84,6 @@ class PingPongModel(object):
       biases_initializer = tf.constant_initializer(0.1),
       variables_collections = self.VARIABLES_COLLECTIONS,
     )
-    tf.summary.histogram('a_h', a_h)
 
     self.z_o = tf.contrib.layers.fully_connected(
       a_h,
@@ -107,16 +104,12 @@ class PingPongModel(object):
       ), (-1,))
 
     self.logits = self.z_o
-    tf.summary.histogram('logits', self.logits)
     self.act_probs = tf.nn.softmax(self.logits)
 
   def add_loss(self):
     with tf.name_scope('Train'):
       self.adv  = tf.placeholder(tf.float32, [None], name="Advantage")
-      tf.summary.histogram('advantage', self.adv)
       self.rewards = tf.placeholder(tf.float32, [None], name="Reward")
-      tf.summary.histogram('weighted_reward', self.rewards)
-      tf.summary.histogram('predicted_value', self.vp)
       self.actions = tf.placeholder(tf.float32, [None, ACTIONS], name="SampledActions")
 
       self.cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o)
