@@ -23,7 +23,6 @@ import scipy.signal
 WIDTH  = 210
 HEIGHT = 160
 PLANES = 1
-ACTIONS = 2
 
 FLAGS = None
 
@@ -32,7 +31,8 @@ class PingPongModel(object):
     'weights': [tf.GraphKeys.WEIGHTS],
   }
 
-  def __init__(self):
+  def __init__(self, num_actions):
+    self.num_actions = num_actions
     self.global_step = tf.Variable(1, name='global_step', trainable=False)
     with tf.name_scope('Frames'):
       self.frames = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="Frames")
@@ -88,7 +88,7 @@ class PingPongModel(object):
     self.z_o = tf.contrib.layers.fully_connected(
       a_h,
       scope = 'Logits',
-      num_outputs = ACTIONS,
+      num_outputs = num_actions,
       activation_fn = None,
       biases_initializer = tf.constant_initializer(0.1),
       variables_collections = self.VARIABLES_COLLECTIONS,
@@ -110,7 +110,7 @@ class PingPongModel(object):
     with tf.name_scope('Train'):
       self.adv  = tf.placeholder(tf.float32, [None], name="Advantage")
       self.rewards = tf.placeholder(tf.float32, [None], name="Reward")
-      self.actions = tf.placeholder(tf.float32, [None, ACTIONS], name="SampledActions")
+      self.actions = tf.placeholder(tf.float32, [None, self.num_actions], name="SampledActions")
 
       self.cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o)
       self.pg_loss = tf.reduce_mean(self.adv * self.cross_entropy)
@@ -183,7 +183,8 @@ class Rollout(object):
     self.first = False
 
 class PongEnvironment(object):
-  def __init__(self, model):
+  def __init__(self, env, model):
+    self.env = env
     self.model = model
 
   @staticmethod
@@ -194,16 +195,14 @@ class PongEnvironment(object):
     return out
 
   def rollouts(self, session):
-    env = gym.make('Pong-v0')
-
     rollout = Rollout()
     for i in range(max(1, FLAGS.history-1)):
       rollout.advance_frame().fill(0)
-    self.process_frame(env.reset(), rollout.advance_frame())
+    self.process_frame(self.env.reset(), rollout.advance_frame())
 
     while True:
       if FLAGS.render:
-        env.render()
+        self.env.render()
 
       act_probs, vp, global_step = session.run(
         [self.model.act_probs, self.model.vp, self.model.global_step],
@@ -219,7 +218,7 @@ class PongEnvironment(object):
           break
         r -= a
 
-      next_frame, reward, done, info = env.step(2 + action)
+      next_frame, reward, done, info = self.env.step(action)
 
       rollout.actions.append(action)
       rollout.rewards.append(reward)
@@ -234,7 +233,7 @@ class PongEnvironment(object):
 
         if done:
           rollout.first = True
-          self.process_frame(env.reset(), rollout.frames[0])
+          self.process_frame(self.env.reset(), rollout.frames[0])
 
       self.process_frame(next_frame, rollout.advance_frame())
 
@@ -251,14 +250,15 @@ def build_advantage(rollout, gamma, lambda_=1.0):
   delta_t = rewards + gamma * vp_t[1:] - vp_t[:-1]
   return discount(delta_t, gamma*lambda_)
 
-def build_actions(rollout):
-  actions = np.zeros((len(rollout.actions), ACTIONS))
+def build_actions(n_action, rollout):
+  actions = np.zeros((len(rollout.actions), n_action))
   actions[np.arange(len(actions)), rollout.actions] = 1
   return actions
 
 def main(_):
-  model = PingPongModel()
-  env = PongEnvironment(model)
+  gymenv = gym.make(FLAGS.environment)
+  model = PingPongModel(gymenv.action_space.n)
+  env = PongEnvironment(gymenv, model)
 
   if FLAGS.train:
     model.add_loss()
@@ -298,7 +298,7 @@ def main(_):
 
       rewards = build_rewards(rollout, FLAGS.discount)
       adv     = build_advantage(rollout, FLAGS.discount)
-      actions = build_actions(rollout)
+      actions = build_actions(model.num_actions, rollout)
 
       ops = {
         'pg_loss': model.pg_loss,
@@ -395,6 +395,9 @@ def arg_parser():
   parser.add_argument('--entropy_weight', type=float, default=0.01)
   parser.add_argument('--l2_weight', type=float, default=0.0)
   parser.add_argument('--clip_gradient', type=float, default=40.0)
+
+  parser.add_argument('--environment', type=str, default='Pong-v0',
+                      help="gym environment to run")
   return parser
 
 if __name__ == '__main__':
