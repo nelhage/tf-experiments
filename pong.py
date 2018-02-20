@@ -20,6 +20,8 @@ import tensorflow as tf
 import numpy as np
 import scipy.signal
 
+import cluster
+
 WIDTH  = 210
 HEIGHT = 160
 PLANES = 1
@@ -33,9 +35,6 @@ class PingPongModel(object):
 
   def __init__(self, num_actions):
     self.num_actions = num_actions
-    self.global_step = tf.get_variable("global_step", [], tf.int32,
-                                       initializer=tf.constant_initializer(0, dtype=tf.int32),
-                                       trainable=False)
     with tf.name_scope('Frames'):
       self.frames = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="Frames")
 
@@ -139,14 +138,13 @@ class PingPongModel(object):
         self.l2_loss
       )
 
-def train_model(model):
+def train_model(model, apply_to = None):
   optimizer = tf.train.AdamOptimizer(FLAGS.eta)
   grads = optimizer.compute_gradients(model.loss, model.var_list)
   clipped, norm = tf.clip_by_global_norm(
     [g for (g, v) in grads], FLAGS.clip_gradient)
   tf.summary.scalar('grad_norm', norm)
-  return optimizer.apply_gradients(
-    (c, v) for (c, (_,v)) in zip(clipped, grads))
+  return optimizer.apply_gradients(zip(clipped, apply_to or model.var_list))
 
 @attr.s(init=False)
 class Rollout(object):
@@ -209,7 +207,7 @@ class PongEnvironment(object):
         self.env.render()
 
       act_probs, vp, global_step = session.run(
-        [self.model.act_probs, self.model.vp, self.model.global_step],
+        [self.model.act_probs, self.model.vp, self.global_step],
         feed_dict={
           self.model.frames: rollout.frames[
             rollout.next_frame-max(2, FLAGS.history):rollout.next_frame]
@@ -260,11 +258,7 @@ def build_actions(n_action, rollout):
   return actions
 
 def run_training(session, sv, env, summary_op=None):
-  if summary_op is not None:
-    summary_writer = tf.summary.FileWriter(FLAGS.logdir, session.graph)
-  else:
-    summary_writer = None
-
+  summary_writer = sv.summary_writer
   write_summaries = FLAGS.train and FLAGS.logdir
 
   avgreward = None
@@ -284,12 +278,13 @@ def run_training(session, sv, env, summary_op=None):
         'pg_loss': env.model.pg_loss,
         'v_loss': env.model.v_loss,
         'train': env.train_step,
-        'global_step': env.model.global_step,
+        'global_step': env.global_step,
         'vp': env.model.vp,
       }
       if summary_op is not None:
         ops['summary'] = summary_op
 
+      session.run(env.sync_step)
       out = session.run(
         ops,
         feed_dict = {
@@ -337,31 +332,63 @@ def run_training(session, sv, env, summary_op=None):
       rollout_frames = 0
       rollout_reward = 0
 
+def run_ps():
+  cluster_def = cluster.cluster_def(FLAGS.workers)
+  server = tf.train.Server(cluster_def, job_name="ps", task_index=0,
+                           config=tf.ConfigProto(device_filters=[cluster.ps_device()]))
+  server.join()
+
 def main(_):
+  if FLAGS.ps:
+    return run_ps()
+
+  cluster_def = cluster.cluster_def(FLAGS.workers)
+  server = tf.train.Server(cluster_def, job_name="worker", task_index=FLAGS.task)
+  config = tf.ConfigProto(device_filters=[
+    cluster.ps_device(),
+    cluster.worker_device(FLAGS.task)])
+  device = cluster.worker_device(FLAGS.task)
+
   gymenv = gym.make(FLAGS.environment)
-  model = PingPongModel(gymenv.action_space.n)
-  env = PongEnvironment(gymenv, model)
 
-  if FLAGS.train:
-    model.add_loss()
-    with tf.control_dependencies([model.global_step.assign_add(tf.shape(model.frames)[0])]):
-      env.train_step = train_model(model)
+  with tf.device(tf.train.replica_device_setter(1, worker_device=device)):
+    with tf.variable_scope('global'):
+      global_model = PingPongModel(gymenv.action_space.n)
+      global_step = tf.get_variable("global_step", [], tf.int32,
+                                    initializer=tf.constant_initializer(0, dtype=tf.int32),
+                                    trainable=False)
 
-  if FLAGS.logdir:
-    try:
-      os.makedirs(os.path.dirname(FLAGS.logdir))
-    except FileExistsError:
-      pass
-    summary_op = tf.summary.merge_all()
-  else:
-    summary_op = None
+  with tf.device(device):
+    with tf.variable_scope('local'):
+      local_model = PingPongModel(gymenv.action_space.n)
+      local_model.add_loss()
+      env = PongEnvironment(gymenv, local_model)
+      env.global_step = global_step
+
+      summary_op = tf.summary.merge_all()
+      inc_step = global_step.assign_add(tf.shape(local_model.frames)[0])
+      with tf.control_dependencies([inc_step]):
+        env.train_step = train_model(local_model, apply_to=global_model.var_list)
+
+      env.sync_step = tf.group(*[v1.assign(v2) for v1, v2 in
+                                 zip(local_model.var_list,
+                                     global_model.var_list)])
+
+  variables_to_save = [v for v in tf.global_variables() if not v.name.startswith("local")]
+  saver = tf.train.Saver(variables_to_save)
+  summary_writer = tf.summary.FileWriter(
+    os.path.join(FLAGS.logdir, "worker-{}".format(FLAGS.task)))
 
   sv = tf.train.Supervisor(logdir = FLAGS.logdir,
-                           global_step = model.global_step,
+                           global_step = global_step,
+                           saver = saver,
+                           summary_writer = summary_writer,
                            summary_op = None,
-                           save_model_secs = FLAGS.checkpoint)
+                           save_model_secs = FLAGS.checkpoint,
+                           is_chief=(FLAGS.task==0))
 
-  with sv.managed_session() as session:
+  with sv.managed_session(server.target, config) as session:
+    session.run(env.sync_step)
     run_training(session, sv, env, summary_op)
 
 def arg_parser():
@@ -401,6 +428,17 @@ def arg_parser():
 
   parser.add_argument('--environment', type=str, default='Pong-v0',
                       help="gym environment to run")
+
+  parser.add_argument('--ps', action='store_true', default=False,
+                      help='Run the parameter server')
+  parser.add_argument('--workers',
+                      type=int,
+                      default=1,
+                      help='Total worker count')
+  parser.add_argument('--task',
+                      type=int,
+                      default=0,
+                      help='Task ID')
   return parser
 
 if __name__ == '__main__':
