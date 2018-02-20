@@ -33,7 +33,9 @@ class PingPongModel(object):
 
   def __init__(self, num_actions):
     self.num_actions = num_actions
-    self.global_step = tf.Variable(1, name='global_step', trainable=False)
+    self.global_step = tf.get_variable("global_step", [], tf.int32,
+                                       initializer=tf.constant_initializer(0, dtype=tf.int32),
+                                       trainable=False)
     with tf.name_scope('Frames'):
       self.frames = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="Frames")
 
@@ -264,15 +266,6 @@ def main(_):
     model.add_loss()
     train_step = train_model(model)
 
-  reset_time = time.time()
-  saver = tf.train.Saver(
-    max_to_keep=5, keep_checkpoint_every_n_hours=1)
-
-  session = tf.InteractiveSession()
-  if FLAGS.load_model:
-    saver.restore(session, FLAGS.load_model)
-  else:
-    tf.global_variables_initializer().run()
 
   if FLAGS.logdir:
     try:
@@ -280,86 +273,91 @@ def main(_):
     except FileExistsError:
       pass
     summary_op = tf.summary.merge_all()
-    summary_writer = tf.summary.FileWriter(FLAGS.logdir, session.graph)
   else:
-    summary_op = summary_writer = None
+    summary_op = None
 
-  write_summaries = FLAGS.train and FLAGS.logdir
-  write_checkpoints = FLAGS.train and FLAGS.logdir and FLAGS.checkpoint
-  next_checkpoint = time.time() + FLAGS.checkpoint
+  sv = tf.train.Supervisor(logdir = FLAGS.logdir,
+                           global_step = model.global_step,
+                           summary_op = None,
+                           save_model_secs = FLAGS.checkpoint)
 
-  avgreward = None
-  rollout_frames = 0
-  rollout_reward = 0
+  with sv.managed_session() as session:
+    if summary_op is not None:
+      summary_writer = tf.summary.FileWriter(FLAGS.logdir, session.graph)
+    else:
+      summary_writer = None
 
-  for rollout in env.rollouts(session):
-    if FLAGS.train:
-      train_start = time.time()
+    write_summaries = FLAGS.train and FLAGS.logdir
 
-      rewards = build_rewards(rollout, FLAGS.discount)
-      adv     = build_advantage(rollout, FLAGS.discount)
-      actions = build_actions(model.num_actions, rollout)
+    avgreward = None
+    reset_time = time.time()
+    rollout_frames = 0
+    rollout_reward = 0
 
-      ops = {
-        'pg_loss': model.pg_loss,
-        'v_loss': model.v_loss,
-        'train': train_step,
-        'global_step': model.global_step,
-        'vp': model.vp,
-      }
-      if summary_op is not None:
-        ops['summary'] = summary_op
+    for rollout in env.rollouts(session):
+      if FLAGS.train:
+        train_start = time.time()
 
-      out = session.run(
-        ops,
-        feed_dict = {
-          model.frames:  rollout.get_frames(),
-          model.actions: actions,
-          model.rewards: rewards,
-          model.adv:     adv,
-        })
-      train_end = time.time()
+        rewards = build_rewards(rollout, FLAGS.discount)
+        adv     = build_advantage(rollout, FLAGS.discount)
+        actions = build_actions(model.num_actions, rollout)
 
-      if avgreward is None:
-        avgreward = np.mean(rewards)
-      avgreward = 0.9 * avgreward + 0.1 * np.mean(rewards)
-      print("done round={global_step} frames={frames} reward={reward:.3f} expreward={avgreward:.3f} pg_loss={pg_loss} v_loss={v_loss} actions={actions}".format(
-        frames = len(rollout.actions),
-        reward = np.mean(rewards),
-        avgreward = avgreward,
-        actions = collections.Counter(rollout.actions),
-        pg_loss = out['pg_loss'],
-        v_loss = out['v_loss'],
-        global_step = out['global_step'],
-      ))
-      fps = len(rollout.actions)/(train_start-reset_time)
-      print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
-        train_start-reset_time, train_end-train_start, fps))
-      reset_time = time.time()
+        ops = {
+          'pg_loss': model.pg_loss,
+          'v_loss': model.v_loss,
+          'train': train_step,
+          'global_step': model.global_step,
+          'vp': model.vp,
+        }
+        if summary_op is not None:
+          ops['summary'] = summary_op
 
-    rollout_frames += len(rollout.actions)
-    rollout_reward += sum(rollout.rewards)
+        out = session.run(
+          ops,
+          feed_dict = {
+            model.frames:  rollout.get_frames(),
+            model.actions: actions,
+            model.rewards: rewards,
+            model.adv:     adv,
+          })
+        train_end = time.time()
 
-    if write_summaries and rollout.first:
-      print("rollout done frames={frames} reward={reward} step={global_step} vp0={vp0}".format(
-        frames = rollout_frames,
-        reward = rollout_reward,
-        global_step = out['global_step'],
-        vp0 = rollout.vp[0],
-      ))
-      summary = tf.Summary()
-      summary.value.add(tag='env/frames', simple_value=rollout_frames)
-      summary.value.add(tag='env/fps', simple_value=fps)
-      summary.value.add(tag='env/reward', simple_value=rollout_reward)
-      summary.value.add(tag='Train/vp0', simple_value=rollout.vp[0])
-      summary_writer.add_summary(summary, out['global_step'])
-      summary_writer.add_summary(out['summary'], out['global_step'])
-      rollout_frames = 0
-      rollout_reward = 0
+        if avgreward is None:
+          avgreward = np.mean(rewards)
+        avgreward = 0.9 * avgreward + 0.1 * np.mean(rewards)
+        print("done round={global_step} frames={frames} reward={reward:.3f} expreward={avgreward:.3f} pg_loss={pg_loss} v_loss={v_loss} actions={actions}".format(
+          frames = len(rollout.actions),
+          reward = np.mean(rewards),
+          avgreward = avgreward,
+          actions = collections.Counter(rollout.actions),
+          pg_loss = out['pg_loss'],
+          v_loss = out['v_loss'],
+          global_step = out['global_step'],
+        ))
+        fps = len(rollout.actions)/(train_start-reset_time)
+        print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
+          train_start-reset_time, train_end-train_start, fps))
+        reset_time = time.time()
 
-    if write_checkpoints and time.time() > next_checkpoint:
-      next_checkpoint = time.time() + FLAGS.checkpoint
-      saver.save(session, os.path.join(FLAGS.logdir, 'pong'), global_step=out['global_step'])
+      rollout_frames += len(rollout.actions)
+      rollout_reward += sum(rollout.rewards)
+
+      if write_summaries and rollout.first:
+        print("rollout done frames={frames} reward={reward} step={global_step} vp0={vp0}".format(
+          frames = rollout_frames,
+          reward = rollout_reward,
+          global_step = out['global_step'],
+          vp0 = rollout.vp[0],
+        ))
+        summary = tf.Summary()
+        summary.value.add(tag='env/frames', simple_value=rollout_frames)
+        summary.value.add(tag='env/fps', simple_value=fps)
+        summary.value.add(tag='env/reward', simple_value=rollout_reward)
+        summary.value.add(tag='Train/vp0', simple_value=rollout.vp[0])
+        summary_writer.add_summary(summary, out['global_step'])
+        summary_writer.add_summary(out['summary'], out['global_step'])
+        rollout_frames = 0
+        rollout_reward = 0
 
 def arg_parser():
   parser = argparse.ArgumentParser()
