@@ -411,8 +411,6 @@ def arg_parser():
                       help='checkpoint every N seconds')
   parser.add_argument('--logdir', type=str, default=None,
                       help='log path')
-  parser.add_argument('--load_model', type=str, default=None,
-                      help='restore model')
 
   parser.add_argument('--train_frames', default=1000, type=int,
                       help='Train model every N frames')
