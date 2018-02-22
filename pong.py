@@ -98,7 +98,7 @@ class PingPongModel(object):
         a_h,
         scope = 'Value',
         num_outputs = 1,
-        activation_fn = tf.tanh,
+        activation_fn = None,
         biases_initializer = tf.constant_initializer(0.1),
         variables_collections = self.VARIABLES_COLLECTIONS,
       ), (-1,))
