@@ -259,7 +259,7 @@ def build_actions(n_action, rollout):
 
 def run_training(session, sv, env, summary_op=None):
   summary_writer = sv.summary_writer
-  write_summaries = FLAGS.train and FLAGS.logdir
+  write_summaries = summary_writer is not None
 
   avgreward = None
   reset_time = time.time()
