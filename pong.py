@@ -315,20 +315,21 @@ def run_training(session, sv, env, summary_op=None):
     rollout_frames += len(rollout.actions)
     rollout_reward += sum(rollout.rewards)
 
-    if write_summaries and rollout.first:
+    if rollout.first:
       print("rollout done frames={frames} reward={reward} step={global_step} vp0={vp0}".format(
         frames = rollout_frames,
         reward = rollout_reward,
         global_step = out['global_step'],
         vp0 = rollout.vp[0],
       ))
-      summary = tf.Summary()
-      summary.value.add(tag='env/frames', simple_value=rollout_frames)
-      summary.value.add(tag='env/fps', simple_value=fps)
-      summary.value.add(tag='env/reward', simple_value=rollout_reward)
-      summary.value.add(tag='Train/vp0', simple_value=rollout.vp[0])
-      summary_writer.add_summary(summary, out['global_step'])
-      summary_writer.add_summary(out['summary'], out['global_step'])
+      if write_summaries:
+        summary = tf.Summary()
+        summary.value.add(tag='env/frames', simple_value=rollout_frames)
+        summary.value.add(tag='env/fps', simple_value=fps)
+        summary.value.add(tag='env/reward', simple_value=rollout_reward)
+        summary.value.add(tag='Train/vp0', simple_value=rollout.vp[0])
+        summary_writer.add_summary(summary, out['global_step'])
+        summary_writer.add_summary(out['summary'], out['global_step'])
       rollout_frames = 0
       rollout_reward = 0
 
