@@ -386,10 +386,10 @@ def main(_):
                            summary_writer = summary_writer,
                            summary_op = None,
                            save_model_secs = FLAGS.checkpoint,
-                           is_chief=(FLAGS.task==0))
+                           is_chief = (FLAGS.task==0),
+                           local_init_op = env.sync_step)
 
   with sv.managed_session(server.target, config) as session:
-    session.run(env.sync_step)
     run_training(session, sv, env, summary_op)
 
 def arg_parser():
