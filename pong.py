@@ -377,8 +377,11 @@ def main(_):
 
   variables_to_save = [v for v in tf.global_variables() if not v.name.startswith("local")]
   saver = tf.train.Saver(variables_to_save)
-  summary_writer = tf.summary.FileWriter(
-    os.path.join(FLAGS.logdir, "worker-{}".format(FLAGS.task)))
+  if FLAGS.logdir and FLAGS.task == 0:
+    summary_writer = tf.summary.FileWriter(
+      os.path.join(FLAGS.logdir, "worker-{}".format(FLAGS.task)))
+  else:
+    summary_writer = None
 
   sv = tf.train.Supervisor(logdir = FLAGS.logdir,
                            global_step = global_step,
