@@ -167,7 +167,8 @@ def run_training(session, sv, env, summary_op=None):
     if summary_op is not None:
       ops['summary'] = summary_op
 
-    session.run(env.sync_step)
+    if env.sync_step:
+      session.run(env.sync_step)
     out = session.run(
       ops,
       feed_dict = {
@@ -216,21 +217,7 @@ def run_training(session, sv, env, summary_op=None):
       rollout_frames = 0
       rollout_reward = 0
 
-def run_ps():
-  cluster_def = cluster.cluster_def(FLAGS.workers)
-  server = tf.train.Server(cluster_def, job_name="ps", task_index=0,
-                           config=tf.ConfigProto(device_filters=[cluster.ps_device()]))
-  server.join()
-
-def main(_):
-  if FLAGS.ps:
-    return run_ps()
-
-  cluster_def = cluster.cluster_def(FLAGS.workers)
-  server = tf.train.Server(cluster_def, job_name="worker", task_index=FLAGS.task)
-  config = tf.ConfigProto(device_filters=[
-    cluster.ps_device(),
-    cluster.worker_device(FLAGS.task)])
+def build_env():
   device = cluster.worker_device(FLAGS.task)
 
   gymenv = gym.make(FLAGS.environment)
@@ -242,15 +229,22 @@ def main(_):
     hidden = FLAGS.hidden,
   )
 
-  with tf.device(tf.train.replica_device_setter(1, worker_device=device)):
-    with tf.variable_scope('global'):
-      global_model = model.AtariModel(cfg)
-      global_step = tf.get_variable("global_step", [], tf.int32,
-                                    initializer=tf.constant_initializer(0, dtype=tf.int32),
-                                    trainable=False)
+  singleton = FLAGS.workers == 1
+
+  if singleton:
+    global_step = tf.get_variable("global_step", [], tf.int32,
+                                  initializer=tf.constant_initializer(0, dtype=tf.int32),
+                                  trainable=False)
+  else:
+    with tf.device(tf.train.replica_device_setter(1, worker_device=device)):
+      with tf.variable_scope('global'):
+        global_model = model.AtariModel(cfg)
+        global_step = tf.get_variable("global_step", [], tf.int32,
+                                      initializer=tf.constant_initializer(0, dtype=tf.int32),
+                                      trainable=False)
 
   with tf.device(device):
-    with tf.variable_scope('local'):
+    with tf.variable_scope('atari' if singleton else 'local'):
       local_model = model.AtariModel(cfg)
       local_model.add_loss(
         v_weight = FLAGS.v_weight,
@@ -261,14 +255,35 @@ def main(_):
       env = RunEnvironment(gymenv, local_model)
       env.global_step = global_step
 
-      summary_op = tf.summary.merge_all()
       inc_step = global_step.assign_add(tf.shape(local_model.frames)[0])
       with tf.control_dependencies([inc_step]):
-        env.train_step = train_model(local_model, apply_to=global_model.var_list)
+        env.train_step = train_model(local_model,
+                                     apply_to=(not singleton and global_model.var_list))
 
-      env.sync_step = tf.group(*[v1.assign(v2) for v1, v2 in
-                                 zip(local_model.var_list,
-                                     global_model.var_list)])
+      if singleton:
+        env.local_init = None
+        env.sync_step = None
+        env.global_variables = []
+        env.local_variables = tf.global_variables()
+      else:
+        env.sync_step = tf.group(*[v1.assign(v2) for v1, v2 in
+                                   zip(local_model.var_list,
+                                   global_model.var_list)])
+        env.global_variables = [v for v in tf.global_variables() if not v.name.startswith("local")]
+        env.local_variables = [v for v in tf.global_variables() if v.name.startswith("local")]
+  return env
+
+def run_ps():
+  cluster_def = cluster.cluster_def(FLAGS.workers)
+  server = tf.train.Server(cluster_def, job_name="ps", task_index=0,
+                           config=tf.ConfigProto(device_filters=[cluster.ps_device()]))
+  server.join()
+
+def main(_):
+  if FLAGS.ps:
+    return run_ps()
+
+  env = build_env()
 
   variables_to_save = [v for v in tf.global_variables() if not v.name.startswith("local")]
   saver = tf.train.Saver(variables_to_save)
@@ -277,15 +292,25 @@ def main(_):
       os.path.join(FLAGS.logdir, "worker-{}".format(FLAGS.task)))
   else:
     summary_writer = None
+  summary_op = tf.summary.merge_all()
 
-  sv = tf.train.Supervisor(logdir = FLAGS.logdir,
-                           global_step = global_step,
-                           saver = saver,
-                           summary_writer = summary_writer,
-                           summary_op = None,
-                           save_model_secs = FLAGS.checkpoint,
-                           is_chief = (FLAGS.task==0),
-                           local_init_op = env.sync_step)
+  sv = tf.train.Supervisor(
+    logdir = FLAGS.logdir,
+    global_step = env.global_step,
+    saver = saver,
+    summary_writer = summary_writer,
+    summary_op = None,
+    save_model_secs = FLAGS.checkpoint,
+    is_chief = (FLAGS.task==0),
+    ready_for_local_init_op = tf.report_uninitialized_variables(env.global_variables),
+    local_init_op = tf.variables_initializer(env.local_variables)
+  )
+  cluster_def = cluster.cluster_def(FLAGS.workers)
+  devices = [cluster.worker_device(FLAGS.task)]
+  if FLAGS.workers > 1:
+    devices.append(cluster.ps_device())
+  config = tf.ConfigProto(device_filters=devices)
+  server = tf.train.Server(cluster_def, job_name="worker", task_index=FLAGS.task)
 
   with sv.managed_session(server.target, config) as session:
     run_training(session, sv, env, summary_op)
