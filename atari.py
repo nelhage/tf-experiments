@@ -90,9 +90,6 @@ class RunEnvironment(object):
     self.process_frame(self.env.reset(), rollout.advance_frame())
 
     while True:
-      if FLAGS.render:
-        self.env.render()
-
       act_probs, vp, global_step = session.run(
         [self.model.act_probs, self.model.vp, self.global_step],
         feed_dict={
@@ -154,50 +151,49 @@ def run_training(session, sv, env, summary_op=None):
   rollout_reward = 0
 
   for rollout in env.rollouts(session):
-    if FLAGS.train:
-      train_start = time.time()
+    train_start = time.time()
 
-      rewards = build_rewards(rollout, FLAGS.discount)
-      adv     = build_advantage(rollout, FLAGS.discount)
-      actions = build_actions(env.model.num_actions, rollout)
+    rewards = build_rewards(rollout, FLAGS.discount)
+    adv     = build_advantage(rollout, FLAGS.discount)
+    actions = build_actions(env.model.num_actions, rollout)
 
-      ops = {
-        'pg_loss': env.model.pg_loss,
-        'v_loss': env.model.v_loss,
-        'train': env.train_step,
-        'global_step': env.global_step,
-        'vp': env.model.vp,
-      }
-      if summary_op is not None:
-        ops['summary'] = summary_op
+    ops = {
+      'pg_loss': env.model.pg_loss,
+      'v_loss': env.model.v_loss,
+      'train': env.train_step,
+      'global_step': env.global_step,
+      'vp': env.model.vp,
+    }
+    if summary_op is not None:
+      ops['summary'] = summary_op
 
-      session.run(env.sync_step)
-      out = session.run(
-        ops,
-        feed_dict = {
-          env.model.frames:  rollout.get_frames(),
-          env.model.actions: actions,
-          env.model.rewards: rewards,
-          env.model.adv:     adv,
-        })
-      train_end = time.time()
+    session.run(env.sync_step)
+    out = session.run(
+      ops,
+      feed_dict = {
+        env.model.frames:  rollout.get_frames(),
+        env.model.actions: actions,
+        env.model.rewards: rewards,
+        env.model.adv:     adv,
+      })
+    train_end = time.time()
 
-      if avgreward is None:
-        avgreward = np.mean(rewards)
-      avgreward = 0.9 * avgreward + 0.1 * np.mean(rewards)
-      print("done round={global_step} frames={frames} reward={reward:.3f} expreward={avgreward:.3f} pg_loss={pg_loss} v_loss={v_loss} actions={actions}".format(
-        frames = len(rollout.actions),
-        reward = np.mean(rewards),
-        avgreward = avgreward,
-        actions = collections.Counter(rollout.actions),
-        pg_loss = out['pg_loss'],
-        v_loss = out['v_loss'],
-        global_step = out['global_step'],
-      ))
-      fps = len(rollout.actions)/(train_start-reset_time)
-      print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
-        train_start-reset_time, train_end-train_start, fps))
-      reset_time = time.time()
+    if avgreward is None:
+      avgreward = np.mean(rewards)
+    avgreward = 0.9 * avgreward + 0.1 * np.mean(rewards)
+    print("done round={global_step} frames={frames} reward={reward:.3f} expreward={avgreward:.3f} pg_loss={pg_loss} v_loss={v_loss} actions={actions}".format(
+      frames = len(rollout.actions),
+      reward = np.mean(rewards),
+      avgreward = avgreward,
+      actions = collections.Counter(rollout.actions),
+      pg_loss = out['pg_loss'],
+      v_loss = out['v_loss'],
+      global_step = out['global_step'],
+    ))
+    fps = len(rollout.actions)/(train_start-reset_time)
+    print("play_time={0:.3f}s train_time={1:.3f}s fps={2:.3f}s".format(
+      train_start-reset_time, train_end-train_start, fps))
+    reset_time = time.time()
 
     rollout_frames += len(rollout.actions)
     rollout_reward += sum(rollout.rewards)
@@ -296,12 +292,6 @@ def main(_):
 
 def arg_parser():
   parser = argparse.ArgumentParser()
-  parser.add_argument('--render', default=False, action='store_true',
-                      help='render simulation')
-  parser.add_argument('--train', default=True, action='store_true',
-                      help='Train model')
-  parser.add_argument('--no-train', action='store_false', dest='train',
-                      help="Don't train")
   parser.add_argument('--hidden', type=int, default=256,
                       help='hidden neurons')
   parser.add_argument('--history', type=int, default=2,
