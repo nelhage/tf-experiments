@@ -21,122 +21,9 @@ import numpy as np
 import scipy.signal
 
 import cluster
-
-WIDTH  = 210
-HEIGHT = 160
-PLANES = 1
+import model
 
 FLAGS = None
-
-class AtariModel(object):
-  VARIABLES_COLLECTIONS = {
-    'weights': [tf.GraphKeys.WEIGHTS],
-  }
-
-  def __init__(self, num_actions):
-    self.num_actions = num_actions
-    with tf.name_scope('Frames'):
-      self.frames = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="Frames")
-
-    downsampled = self.frames[:,::2,::2]
-    if FLAGS.history == 1:
-      frames = downsampled[1:] - downsampled[:-1]
-    else:
-      stacks = [downsampled[i:-(FLAGS.history-1-i) if i < FLAGS.history-1 else None] for i in range(FLAGS.history)]
-      frames = tf.stack(stacks, axis=4)
-      frames = tf.reshape(frames, (-1, WIDTH//2, HEIGHT//2, FLAGS.history*PLANES))
-
-    self.h_conv1 = tf.contrib.layers.conv2d(
-      frames, 16,
-      scope='Conv1',
-      stride=[2, 2],
-      kernel_size=[4, 4],
-      padding='SAME',
-      biases_initializer = tf.constant_initializer(0.1),
-      variables_collections = self.VARIABLES_COLLECTIONS,
-    )
-
-
-    out = self.h_conv1
-    if FLAGS.pool:
-      out = tf.contrib.layers.max_pool2d(
-        out, kernel_size=[2, 2], stride=[2, 2], padding='SAME')
-
-    self.h_conv2 = tf.contrib.layers.conv2d(
-      out, 16,
-      scope='Conv2',
-      stride=[2, 2],
-      kernel_size=[4, 4],
-      padding='SAME',
-      biases_initializer = tf.constant_initializer(0.1),
-      variables_collections = self.VARIABLES_COLLECTIONS,
-    )
-
-    out = self.h_conv2
-    if FLAGS.pool:
-      out = tf.contrib.layers.max_pool2d(
-        out, kernel_size=[2, 2], stride=[2, 2], padding='SAME')
-
-    a_h = tf.contrib.layers.fully_connected(
-      tf.contrib.layers.flatten(out),
-      scope = 'Hidden',
-      num_outputs = FLAGS.hidden,
-      activation_fn = tf.nn.relu,
-      biases_initializer = tf.constant_initializer(0.1),
-      variables_collections = self.VARIABLES_COLLECTIONS,
-    )
-
-    self.z_o = tf.contrib.layers.fully_connected(
-      a_h,
-      scope = 'Logits',
-      num_outputs = num_actions,
-      activation_fn = None,
-      biases_initializer = tf.constant_initializer(0.1),
-      variables_collections = self.VARIABLES_COLLECTIONS,
-    )
-    self.vp = tf.reshape(
-      tf.contrib.layers.fully_connected(
-        a_h,
-        scope = 'Value',
-        num_outputs = 1,
-        activation_fn = None,
-        biases_initializer = tf.constant_initializer(0.1),
-        variables_collections = self.VARIABLES_COLLECTIONS,
-      ), (-1,))
-
-    self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                      tf.get_variable_scope().name)
-    self.logits = self.z_o
-    self.act_probs = tf.nn.softmax(self.logits)
-
-  def add_loss(self):
-    with tf.name_scope('Train'):
-      self.adv  = tf.placeholder(tf.float32, [None], name="Advantage")
-      self.rewards = tf.placeholder(tf.float32, [None], name="Reward")
-      self.actions = tf.placeholder(tf.float32, [None, self.num_actions], name="SampledActions")
-
-      self.cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=self.actions, logits=self.z_o)
-      self.pg_loss = tf.reduce_mean(self.adv * self.cross_entropy)
-      tf.summary.scalar('pg_loss', self.pg_loss)
-      self.v_loss = 0.5 * tf.reduce_mean(tf.square(self.vp - self.rewards))
-      tf.summary.scalar('value_loss', self.v_loss)
-      self.entropy = -tf.reduce_mean(
-        tf.reduce_sum(self.act_probs * tf.nn.log_softmax(self.logits), axis=1))
-      tf.summary.scalar('entropy', self.entropy)
-
-      if FLAGS.l2_weight != 0:
-        self.l2_loss = tf.contrib.layers.apply_regularization(
-          tf.contrib.layers.l2_regularizer(FLAGS.l2_weight))
-        tf.summary.scalar('l2_loss', self.l2_loss / FLAGS.l2_weight)
-      else:
-        self.l2_loss = 0
-
-      self.loss = (
-        FLAGS.pg_weight * self.pg_loss +
-        FLAGS.v_weight * self.v_loss -
-        FLAGS.entropy_weight * self.entropy +
-        self.l2_loss
-      )
 
 def train_model(model, apply_to = None):
   optimizer = tf.train.AdamOptimizer(FLAGS.eta)
@@ -158,7 +45,7 @@ class Rollout(object):
   first = attr.ib()
 
   def __init__(self):
-    self.frames = np.zeros((FLAGS.train_frames, WIDTH, HEIGHT, PLANES))
+    self.frames = np.zeros((FLAGS.train_frames, model.WIDTH, model.HEIGHT, model.PLANES))
     self.next_frame = 0
     self.actions = []
     self.rewards = []
@@ -352,18 +239,30 @@ def main(_):
 
   gymenv = gym.make(FLAGS.environment)
 
+  cfg = model.Config(
+    num_actions = gymenv.action_space.n,
+    history = FLAGS.history,
+    pool = FLAGS.pool,
+    hidden = FLAGS.hidden,
+  )
+
   with tf.device(tf.train.replica_device_setter(1, worker_device=device)):
     with tf.variable_scope('global'):
-      global_model = AtariModel(gymenv.action_space.n)
+      global_model = model.AtariModel(cfg)
       global_step = tf.get_variable("global_step", [], tf.int32,
                                     initializer=tf.constant_initializer(0, dtype=tf.int32),
                                     trainable=False)
 
   with tf.device(device):
     with tf.variable_scope('local'):
-      local_model = AtariModel(gymenv.action_space.n)
-      local_model.add_loss()
-      env = GameEnvironment(gymenv, local_model)
+      local_model = model.AtariModel(cfg)
+      local_model.add_loss(
+        v_weight = FLAGS.v_weight,
+        pg_weight = FLAGS.pg_weight,
+        l2_weight = FLAGS.l2_weight,
+        entropy_weight = FLAGS.entropy_weight,
+      )
+      env = RunEnvironment(gymenv, local_model)
       env.global_step = global_step
 
       summary_op = tf.summary.merge_all()
