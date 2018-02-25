@@ -28,7 +28,7 @@ PLANES = 1
 
 FLAGS = None
 
-class PingPongModel(object):
+class AtariModel(object):
   VARIABLES_COLLECTIONS = {
     'weights': [tf.GraphKeys.WEIGHTS],
   }
@@ -183,7 +183,7 @@ class Rollout(object):
     self.last = False
     self.first = False
 
-class PongEnvironment(object):
+class RunEnvironment(object):
   def __init__(self, env, model):
     self.env = env
     self.model = model
@@ -354,16 +354,16 @@ def main(_):
 
   with tf.device(tf.train.replica_device_setter(1, worker_device=device)):
     with tf.variable_scope('global'):
-      global_model = PingPongModel(gymenv.action_space.n)
+      global_model = AtariModel(gymenv.action_space.n)
       global_step = tf.get_variable("global_step", [], tf.int32,
                                     initializer=tf.constant_initializer(0, dtype=tf.int32),
                                     trainable=False)
 
   with tf.device(device):
     with tf.variable_scope('local'):
-      local_model = PingPongModel(gymenv.action_space.n)
+      local_model = AtariModel(gymenv.action_space.n)
       local_model.add_loss()
-      env = PongEnvironment(gymenv, local_model)
+      env = GameEnvironment(gymenv, local_model)
       env.global_step = global_step
 
       summary_op = tf.summary.merge_all()
