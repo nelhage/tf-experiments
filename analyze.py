@@ -54,13 +54,14 @@ def main(argv):
           frames = nframes,
           reward = reward,
         ))
+        if FLAGS.one:
+          break
       reward = 0
       nframes = 0
       gymenv.reset()
       frames = np.zeros((depth, model.WIDTH, model.HEIGHT, model.PLANES))
-      i = 0
-      frames[i] = process_frame(gymenv.reset())
-      i += 1
+      frames[0] = process_frame(gymenv.reset())
+      i = 1
 
     if FLAGS.render:
       gymenv.render()
@@ -107,6 +108,11 @@ def arg_parser():
                       dest='strip_global',
                       action='store_true',
                       help="Strip global/ from names")
+
+  parser.add_argument('--one',
+                      default=False,
+                      dest='one',
+                      action='store_true')
 
   parser.add_argument('--no-strip-global',
                       dest='strip_global',
