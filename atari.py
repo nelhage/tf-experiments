@@ -26,7 +26,7 @@ import model
 FLAGS = None
 
 def train_model(model, apply_to = None):
-  optimizer = tf.train.AdamOptimizer(FLAGS.eta)
+  optimizer = tf.train.GradientDescentOptimizer(FLAGS.eta)
   grads = optimizer.compute_gradients(model.loss, model.var_list)
   clipped, norm = tf.clip_by_global_norm(
     [g for (g, v) in grads], FLAGS.clip_gradient)
@@ -321,7 +321,7 @@ def arg_parser():
                       help='hidden neurons')
   parser.add_argument('--history', type=int, default=2,
                       help='history frames')
-  parser.add_argument('--eta', type=float, default=1e-4,
+  parser.add_argument('--eta', type=float, default=0.1,
                       help='learning rate')
   parser.add_argument('--discount', type=float, default=0.99,
                       help='discount rate')
