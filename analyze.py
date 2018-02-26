@@ -46,15 +46,25 @@ def main(argv):
     depth = 2
 
   done = True
+  reward = None
   while True:
     if done:
+      if reward is not None:
+        print("rollout done frames={frames} reward={reward}".format(
+          frames = nframes,
+          reward = reward,
+        ))
+      reward = 0
+      nframes = 0
       gymenv.reset()
       frames = np.zeros((depth, model.WIDTH, model.HEIGHT, model.PLANES))
       i = 0
       frames[i] = process_frame(gymenv.reset())
       i += 1
 
-    gymenv.render()
+    if FLAGS.render:
+      gymenv.render()
+
     feed_frames = np.concatenate([frames[i:], frames[:i]])
 
     act_probs = session.run(predict.act_probs, feed_dict={
@@ -68,12 +78,17 @@ def main(argv):
         break
       r -= a
 
-    next_frame, reward, done, info = gymenv.step(action)
+    next_frame, r, done, info = gymenv.step(action)
+    reward += r
+    nframes += 1
     frames[i] = process_frame(next_frame)
     i = (i + 1) % depth
 
 def arg_parser():
   parser = argparse.ArgumentParser()
+  parser.add_argument('--render', default=False, action='store_true',
+                      help='render')
+
   parser.add_argument('--hidden', type=int, default=256,
                       help='hidden neurons')
   parser.add_argument('--history', type=int, default=2,
