@@ -218,8 +218,6 @@ def run_training(session, sv, env, summary_op=None):
       rollout_reward = 0
 
 def build_env():
-  device = cluster.worker_device(FLAGS.task)
-
   gymenv = gym.make(FLAGS.environment)
 
   cfg = model.Config(
@@ -230,8 +228,10 @@ def build_env():
   )
 
   singleton = FLAGS.workers == 1
+  device = cluster.worker_device(FLAGS.task)
 
   if singleton:
+    device = None
     global_step = tf.get_variable("global_step", [], tf.int32,
                                   initializer=tf.constant_initializer(0, dtype=tf.int32),
                                   trainable=False)
@@ -307,12 +307,17 @@ def main(_):
   )
   cluster_def = cluster.cluster_def(FLAGS.workers)
   devices = [cluster.worker_device(FLAGS.task)]
-  if FLAGS.workers > 1:
-    devices.append(cluster.ps_device())
-  config = tf.ConfigProto(device_filters=devices)
-  server = tf.train.Server(cluster_def, job_name="worker", task_index=FLAGS.task)
 
-  with sv.managed_session(server.target, config) as session:
+
+  if FLAGS.workers == 1:
+    server = ''
+  else:
+    devices.append(cluster.ps_device())
+    server = tf.train.Server(cluster_def, job_name="worker", task_index=FLAGS.task)
+
+  config = tf.ConfigProto(device_filters=devices)
+
+  with sv.managed_session(master=server, config=config) as session:
     run_training(session, sv, env, summary_op)
 
 def arg_parser():
