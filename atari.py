@@ -237,14 +237,14 @@ def build_env():
                                   trainable=False)
   else:
     with tf.device(tf.train.replica_device_setter(1, worker_device=device)):
+      global_step = tf.get_variable("global_step", [], tf.int32,
+                                    initializer=tf.constant_initializer(0, dtype=tf.int32),
+                                    trainable=False)
       with tf.variable_scope('global'):
         global_model = model.AtariModel(cfg)
-        global_step = tf.get_variable("global_step", [], tf.int32,
-                                      initializer=tf.constant_initializer(0, dtype=tf.int32),
-                                      trainable=False)
 
   with tf.device(device):
-    with tf.variable_scope('atari' if singleton else 'local'):
+    with tf.variable_scope('global' if singleton else 'local'):
       local_model = model.AtariModel(cfg)
       local_model.add_loss(
         v_weight = FLAGS.v_weight,
