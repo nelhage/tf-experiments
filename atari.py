@@ -326,7 +326,7 @@ def arg_parser():
                       help='hidden neurons')
   parser.add_argument('--history', type=int, default=2,
                       help='history frames')
-  parser.add_argument('--eta', type=float, default=0.1,
+  parser.add_argument('--eta', type=float, default=0.2,
                       help='learning rate')
   parser.add_argument('--discount', type=float, default=0.99,
                       help='discount rate')
