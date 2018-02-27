@@ -310,14 +310,15 @@ def main(_):
 
 
   if FLAGS.workers == 1:
-    server = ''
+    master = ''
   else:
     devices.append(cluster.ps_device())
     server = tf.train.Server(cluster_def, job_name="worker", task_index=FLAGS.task)
+    master = server.target
 
   config = tf.ConfigProto(device_filters=devices)
 
-  with sv.managed_session(master=server, config=config) as session:
+  with sv.managed_session(master=master, config=config) as session:
     run_training(session, sv, env, summary_op)
 
 def arg_parser():
