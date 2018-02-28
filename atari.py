@@ -286,13 +286,21 @@ def main(_):
   env = build_env()
 
   variables_to_save = [v for v in tf.global_variables() if not v.name.startswith("local")]
-  saver = tf.train.Saver(variables_to_save)
+  saver = tf.train.Saver(
+    keep_checkpoint_every_n_hours = 1,
+    var_list = variables_to_save,
+  )
   if FLAGS.logdir and FLAGS.task == 0:
     summary_writer = tf.summary.FileWriter(
       os.path.join(FLAGS.logdir, "worker-{}".format(FLAGS.task)))
   else:
     summary_writer = None
   summary_op = tf.summary.merge_all()
+
+  if FLAGS.load_model:
+    init_fn = lambda s: saver.restore(s, FLAGS.load_model)
+  else:
+    init_fn = None
 
   sv = tf.train.Supervisor(
     logdir = FLAGS.logdir,
@@ -302,6 +310,7 @@ def main(_):
     summary_op = None,
     save_model_secs = FLAGS.checkpoint,
     is_chief = (FLAGS.task==0),
+    init_fn = init_fn,
     ready_for_local_init_op = tf.report_uninitialized_variables(env.global_variables),
     local_init_op = tf.variables_initializer(env.local_variables)
   )
@@ -335,6 +344,8 @@ def arg_parser():
                       help='checkpoint every N seconds')
   parser.add_argument('--logdir', type=str, default=None,
                       help='log path')
+  parser.add_argument('--load_model', type=str, default=None,
+                      help='load model')
 
   parser.add_argument('--train_frames', default=1000, type=int,
                       help='Train model every N frames')
