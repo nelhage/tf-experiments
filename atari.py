@@ -62,8 +62,9 @@ class Rollout(object):
     return self.frames[:self.next_frame]
 
   def clear(self):
-    self.frames[:FLAGS.history] = self.frames[self.next_frame-FLAGS.history:self.next_frame]
-    self.next_frame = 1
+    depth = max(2, FLAGS.history)
+    self.frames[:depth-1] = self.frames[self.next_frame-depth+1:self.next_frame]
+    self.next_frame = depth - 1
     del self.actions[:]
     del self.rewards[:]
     del self.vp[:]
