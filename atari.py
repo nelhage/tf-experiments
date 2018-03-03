@@ -61,10 +61,9 @@ class Rollout(object):
   def get_frames(self):
     return self.frames[:self.next_frame]
 
-  def clear(self):
-    depth = max(2, FLAGS.history)
-    self.frames[:depth-1] = self.frames[self.next_frame-depth+1:self.next_frame]
-    self.next_frame = depth - 1
+  def clear(self, history):
+    self.frames[:history-1] = self.frames[self.next_frame-history+1:self.next_frame]
+    self.next_frame = history - 1
     del self.actions[:]
     del self.rewards[:]
     del self.vp[:]
@@ -86,7 +85,7 @@ class RunEnvironment(object):
 
   def rollouts(self, session):
     rollout = Rollout()
-    for i in range(max(1, FLAGS.history-1)):
+    for i in range(self.cfg.history-1):
       rollout.advance_frame().fill(0)
     self.process_frame(self.env.reset(), rollout.advance_frame())
 
@@ -95,7 +94,7 @@ class RunEnvironment(object):
         [self.model.act_probs, self.model.vp, self.global_step],
         feed_dict={
           self.model.frames: rollout.frames[
-            rollout.next_frame-max(2, FLAGS.history):rollout.next_frame]
+            rollout.next_frame-self.cfg.history:rollout.next_frame]
         })
       r = np.random.uniform()
 
@@ -116,7 +115,7 @@ class RunEnvironment(object):
 
         yield rollout
 
-        rollout.clear()
+        rollout.clear(self.cfg.history)
 
         if done:
           rollout.first = True
@@ -223,7 +222,8 @@ def build_env():
 
   cfg = model.Config(
     num_actions = gymenv.action_space.n,
-    history = FLAGS.history,
+    history = max(2, FLAGS.history),
+    difference = FLAGS.history == 1,
     pool = FLAGS.pool,
     hidden = FLAGS.hidden,
   )
@@ -254,6 +254,7 @@ def build_env():
         entropy_weight = FLAGS.entropy_weight,
       )
       env = RunEnvironment(gymenv, local_model)
+      env.cfg = cfg
       env.global_step = global_step
 
       inc_step = global_step.assign_add(tf.shape(local_model.frames)[0])

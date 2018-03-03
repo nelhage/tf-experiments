@@ -14,6 +14,7 @@ PLANES = 1
 class Config(object):
     num_actions = attr.ib(validator=attr.validators.instance_of(int))
     history = attr.ib(validator=attr.validators.instance_of(int))
+    difference = attr.ib(validator=attr.validators.instance_of(bool))
     pool = attr.ib(validator=attr.validators.instance_of(bool))
     hidden = attr.ib(validator=attr.validators.instance_of(int))
 
@@ -29,7 +30,7 @@ class AtariModel(object):
       self.frames = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="Frames")
 
     downsampled = self.frames[:,::2,::2]
-    if cfg.history == 1:
+    if cfg.difference:
       frames = downsampled[1:] - downsampled[:-1]
     else:
       stacks = [downsampled[i:-(cfg.history-1-i) if i < cfg.history-1 else None] for i in range(cfg.history)]
