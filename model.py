@@ -29,13 +29,9 @@ class AtariModel(object):
     with tf.name_scope('Frames'):
       self.frames = tf.placeholder(tf.float32, [None, WIDTH, HEIGHT, PLANES], name="Frames")
 
-    downsampled = self.frames[:,::2,::2]
+    frames = self.frames[:,::2,::2]
     if cfg.difference:
       frames = downsampled[1:] - downsampled[:-1]
-    else:
-      stacks = [downsampled[i:-(cfg.history-1-i) if i < cfg.history-1 else None] for i in range(cfg.history)]
-      frames = tf.stack(stacks, axis=4)
-      frames = tf.reshape(frames, (-1, WIDTH//2, HEIGHT//2, cfg.history*PLANES))
 
     self.h_conv1 = tf.contrib.layers.conv2d(
       frames, 16,
@@ -67,6 +63,10 @@ class AtariModel(object):
     if cfg.pool:
       out = tf.contrib.layers.max_pool2d(
         out, kernel_size=[2, 2], stride=[2, 2], padding='SAME')
+
+    if not cfg.difference:
+      stacks = [out[i:-(cfg.history-1-i) if i < cfg.history-1 else None] for i in range(cfg.history)]
+      out = tf.concat(stacks, axis=3)
 
     a_h = tf.contrib.layers.fully_connected(
       tf.contrib.layers.flatten(out),
