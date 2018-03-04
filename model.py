@@ -31,7 +31,7 @@ class AtariModel(object):
 
     frames = self.frames[:,::2,::2]
     if cfg.difference:
-      frames = downsampled[1:] - downsampled[:-1]
+      frames = frames[1:] - frames[:-1]
 
     self.h_conv1 = tf.contrib.layers.conv2d(
       frames, 16,
