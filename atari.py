@@ -42,7 +42,6 @@ class Rollout(object):
 
   next_frame = attr.ib()
   last = attr.ib()
-  first = attr.ib()
 
   def __init__(self):
     self.frames = np.zeros((FLAGS.train_frames, model.WIDTH, model.HEIGHT, model.PLANES))
@@ -51,7 +50,6 @@ class Rollout(object):
     self.rewards = []
     self.vp = []
     self.last = False
-    self.first = True
 
   def advance_frame(self):
     out = self.frames[self.next_frame]
@@ -68,7 +66,6 @@ class Rollout(object):
     del self.rewards[:]
     del self.vp[:]
     self.last = False
-    self.first = False
 
 class RunEnvironment(object):
   def __init__(self, env, model):
@@ -85,11 +82,15 @@ class RunEnvironment(object):
 
   def rollouts(self, session):
     rollout = Rollout()
-    for i in range(self.cfg.history-1):
-      rollout.advance_frame().fill(0)
-    self.process_frame(self.env.reset(), rollout.advance_frame())
+    done = True
 
     while True:
+      if done:
+        rollout.clear(1)
+        for i in range(self.cfg.history-1):
+          rollout.advance_frame().fill(0)
+        self.process_frame(self.env.reset(), rollout.advance_frame())
+
       act_probs, vp, global_step = session.run(
         [self.model.act_probs, self.model.vp, self.global_step],
         feed_dict={
@@ -117,11 +118,8 @@ class RunEnvironment(object):
 
         rollout.clear(self.cfg.history)
 
-        if done:
-          rollout.first = True
-          self.process_frame(self.env.reset(), rollout.frames[0])
-
-      self.process_frame(next_frame, rollout.advance_frame())
+      if not done:
+        self.process_frame(next_frame, rollout.advance_frame())
 
 def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
@@ -199,7 +197,7 @@ def run_training(session, sv, env, summary_op=None):
     rollout_frames += len(rollout.actions)
     rollout_reward += sum(rollout.rewards)
 
-    if rollout.first:
+    if rollout.last:
       print("rollout done frames={frames} reward={reward} step={global_step} vp0={vp0}".format(
         frames = rollout_frames,
         reward = rollout_reward,
