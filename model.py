@@ -65,7 +65,10 @@ class AtariModel(object):
         out, kernel_size=[2, 2], stride=[2, 2], padding='SAME')
 
     if not cfg.difference:
-      stacks = [out[i:-(cfg.history-1-i) if i < cfg.history-1 else None] for i in range(cfg.history)]
+      stacks = [
+        out[i:-(cfg.history-1-i) if i < cfg.history-1 else None]
+        for i in range(cfg.history)
+      ]
       out = tf.concat(stacks, axis=3)
 
     a_h = tf.contrib.layers.fully_connected(
