@@ -69,6 +69,7 @@ class AtariModel(object):
         out[i:-(cfg.history-1-i) if i < cfg.history-1 else None]
         for i in range(cfg.history)
       ]
+      stacks = stacks[1:]
       out = tf.concat(stacks, axis=3)
 
     a_h = tf.contrib.layers.fully_connected(
