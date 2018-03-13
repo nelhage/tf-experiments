@@ -64,22 +64,29 @@ class AtariModel(object):
       out = tf.contrib.layers.max_pool2d(
         out, kernel_size=[2, 2], stride=[2, 2], padding='SAME')
 
-    if not cfg.difference:
-      stacks = [
-        out[i:-(cfg.history-1-i) if i < cfg.history-1 else None]
-        for i in range(cfg.history)
-      ]
-      stacks = stacks[:1] + stacks
-      out = tf.concat(stacks, axis=3)
-
-    a_h = tf.contrib.layers.fully_connected(
-      tf.contrib.layers.flatten(out),
-      scope = 'Hidden',
-      num_outputs = cfg.hidden,
-      activation_fn = tf.nn.relu,
-      biases_initializer = tf.constant_initializer(0.1),
-      variables_collections = self.VARIABLES_COLLECTIONS,
-    )
+    if cfg.difference:
+      a_h = tf.contrib.layers.fully_connected(
+        tf.contrib.layers.flatten(out),
+        scope = 'Hidden',
+        num_outputs = cfg.hidden,
+        activation_fn = tf.nn.relu,
+        biases_initializer = tf.constant_initializer(0.1),
+        variables_collections = self.VARIABLES_COLLECTIONS,
+      )
+    else:
+      dims = out.shape[1] * out.shape[2]
+      out = tf.reshape(out, (1, -1, dims, 16))
+      a_h = tf.contrib.layers.conv2d(
+        out,
+        cfg.hidden,
+        scope = 'Hidden',
+        stride = 1,
+        kernel_size = [cfg.history, dims],
+        padding = 'VALID',
+        variables_collections = self.VARIABLES_COLLECTIONS,
+        activation_fn = tf.nn.relu,
+      )
+      a_h = tf.reshape(a_h, (-1, cfg.hidden))
 
     self.z_o = tf.contrib.layers.fully_connected(
       a_h,
